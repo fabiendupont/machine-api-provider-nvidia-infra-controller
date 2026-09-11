@@ -34,11 +34,12 @@ NVIDIA_CARBIDE_API_ENDPOINT=https://... go test ./test/e2e/ -v
 ## SDK
 
 Uses `github.com/NVIDIA/infra-controller/rest-api/sdk/standard`.
-go.mod uses a local `replace` directive:
+go.mod pins to the v2.2.0-rc.2 upstream commit via pseudo-version:
 ```
-replace github.com/NVIDIA/infra-controller/rest-api/sdk/standard => ../../NVIDIA/infra-controller/rest-api/sdk/standard
+github.com/NVIDIA/infra-controller/rest-api/sdk/standard v0.0.0-20260909164623-233d62db0072
 ```
-This requires a local checkout of the infra-controller repo.
+No local replace directive — the sub-module has its own go.mod and
+the repo is publicly accessible. Update when NVIDIA cuts v2.2.0.
 
 ## Current status
 
@@ -198,18 +199,23 @@ means default (applies to all sites). Falls back to
 Separate controller (`pkg/controllers/baremetalhost/`) syncs NICo
 machines to Metal3 `BareMetalHost` CRs with
 `externallyProvisioned: true` and `HostFirmwareComponents` CRs.
+Controller is opt-in via `--enable-bmh-sync` flag; credentials
+read at startup via `mgr.GetAPIReader()` from the secret named
+by `--bmh-credentials-secret-*` flags.
 
 Data sources (all via NICo API, which aggregates RMS data):
 - `GetAllMachine(org)` with `includeMetadata=true` — BMC, DMI,
   NICs, GPUs (provider-admin only)
-- `GetAllSku(org)` — CPU, RAM, storage via SKU components
-- `GetAllSiteExplorerEndpoint(org)` — firmware versions from
-  Site Explorer (RMS integration)
+- `GetAllSku(org)` — CPU, RAM, storage via SKU components (5min cache)
+- `GetAllSiteExplorerEndpoint(org)` — firmware versions and boot
+  MAC (`evaluatedBootInterface`) from Site Explorer (RMS integration)
 
-BMH includes hardware details annotation (system vendor, BIOS,
-NICs, CPU, RAM, storage). HFC includes firmware component
-versions from Site Explorer plus BMC firmware rev and GPU vbios
-from machine metadata. Degrades gracefully on 403 (tenant org).
+BMH boot MAC uses `evaluatedBootInterface.pair.macAddress` from
+Site Explorer; falls back to first NIC when unavailable. BMH
+includes hardware details annotation (system vendor, BIOS, NICs,
+CPU, RAM, storage). HFC includes firmware component versions from
+Site Explorer plus BMC firmware rev and GPU vbios from machine
+metadata. Degrades gracefully on 403 (tenant org).
 
 ### ~~14. Topology labels for scheduler-aware placement~~ (DONE)
 

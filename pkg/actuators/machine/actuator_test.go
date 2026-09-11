@@ -632,15 +632,6 @@ func TestValidateProviderSpec(t *testing.T) {
 			}(),
 			wantErr: true,
 		},
-		{
-			name: "too many additional subnets",
-			spec: func() v1beta1.NicoMachineProviderSpec {
-				s := validProviderSpec()
-				s.AdditionalSubnetIDs = make([]v1beta1.AdditionalSubnet, 11)
-				return s
-			}(),
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {

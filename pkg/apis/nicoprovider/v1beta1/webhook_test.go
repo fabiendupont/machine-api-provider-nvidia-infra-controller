@@ -113,15 +113,6 @@ func TestValidateProviderSpec(t *testing.T) {
 			}(),
 			wantErr: true,
 		},
-		{
-			name: "too many additional subnets",
-			spec: func() NicoMachineProviderSpec {
-				s := validSpec()
-				s.AdditionalSubnetIDs = make([]AdditionalSubnet, 11)
-				return s
-			}(),
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {

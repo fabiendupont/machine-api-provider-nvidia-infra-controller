@@ -17,14 +17,18 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 
+	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -33,6 +37,7 @@ import (
 
 	"github.com/fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/pkg/actuators/machine"
 	nicov1beta1 "github.com/fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/pkg/apis/nicoprovider/v1beta1"
+	bmhcontroller "github.com/fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/pkg/controllers/baremetalhost"
 	machinecontroller "github.com/fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/pkg/controllers/machine"
 )
 
@@ -45,6 +50,7 @@ func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = machinev1beta1.AddToScheme(scheme)
 	_ = nicov1beta1.AddToScheme(scheme)
+	_ = metal3.AddToScheme(scheme)
 }
 
 func main() {
@@ -54,6 +60,10 @@ func main() {
 	var enableLeaderElection bool
 	var enableWebhooks bool
 	var webhookCertDir string
+	var enableBMHSync bool
+	var bmhCredentialsSecretName string
+	var bmhCredentialsSecretNamespace string
+	var bmhNamespace string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080",
 		"The address the metric endpoint binds to.")
@@ -70,6 +80,15 @@ func main() {
 	flag.StringVar(&webhookCertDir, "webhook-cert-dir",
 		"/tmp/k8s-webhook-server/serving-certs",
 		"Directory containing TLS certificates for the webhook server.")
+	flag.BoolVar(&enableBMHSync, "enable-bmh-sync", false,
+		"Enable BareMetalHost and HostFirmwareComponents sync from NICo machines. "+
+			"Requires provider-admin credentials.")
+	flag.StringVar(&bmhCredentialsSecretName, "bmh-credentials-secret-name", "nico-credentials",
+		"Name of the Secret containing NICo API credentials for BMH sync.")
+	flag.StringVar(&bmhCredentialsSecretNamespace, "bmh-credentials-secret-namespace", "openshift-machine-api",
+		"Namespace of the NICo credentials Secret for BMH sync.")
+	flag.StringVar(&bmhNamespace, "bmh-namespace", "openshift-machine-api",
+		"Namespace in which BareMetalHost and HostFirmwareComponents CRs are created.")
 
 	opts := zap.Options{
 		Development: false,
@@ -142,6 +161,21 @@ func main() {
 		setupLog.Info("Webhooks disabled")
 	}
 
+	// Setup BareMetalHost sync controller if enabled
+	if enableBMHSync {
+		nicoClient, orgName, err := buildBMHNicoClient(mgr, bmhCredentialsSecretName, bmhCredentialsSecretNamespace)
+		if err != nil {
+			setupLog.Error(err, "unable to read BMH credentials secret",
+				"secret", bmhCredentialsSecretNamespace+"/"+bmhCredentialsSecretName)
+			os.Exit(1)
+		}
+		if err := bmhcontroller.SetupWithManager(mgr, nicoClient, orgName, bmhNamespace); err != nil {
+			setupLog.Error(err, "unable to set up BMH sync controller")
+			os.Exit(1)
+		}
+		setupLog.Info("BMH sync enabled", "namespace", bmhNamespace)
+	}
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
@@ -156,4 +190,25 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// buildBMHNicoClient reads the NICo credentials secret via the API reader
+// (non-cached, works before the manager cache starts) and returns a NICo client
+// and orgName for use by the BMH sync controller.
+func buildBMHNicoClient(
+	mgr ctrl.Manager,
+	secretName, secretNamespace string,
+) (machine.NicoClientInterface, string, error) {
+	secret := &corev1.Secret{}
+	if err := mgr.GetAPIReader().Get(
+		context.Background(),
+		client.ObjectKey{Name: secretName, Namespace: secretNamespace},
+		secret,
+	); err != nil {
+		return nil, "", err
+	}
+	endpoint := string(secret.Data["endpoint"])
+	orgName := string(secret.Data["orgName"])
+	token := string(secret.Data["token"])
+	return machine.NewNicoAPIClient(endpoint, token), orgName, nil
 }

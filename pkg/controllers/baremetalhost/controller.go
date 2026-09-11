@@ -39,12 +39,17 @@ func (r *Reconciler) syncMachine(
 	ctx context.Context,
 	m nico.Machine,
 	skuMap map[string]*nico.Sku,
-	firmwareMap map[string]map[string]string,
+	seData *siteExplorerData,
 ) error {
 	machineID := derefStr(m.Id)
 	sku := skuMap[machineID]
 
-	desired := MachineToBaremetalHost(m, sku, r.Namespace)
+	var bootMAC string
+	if seData != nil {
+		bootMAC = seData.BootMACs[machineID]
+	}
+
+	desired := MachineToBaremetalHost(m, sku, bootMAC, r.Namespace)
 
 	existing := &metal3.BareMetalHost{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
@@ -63,9 +68,11 @@ func (r *Reconciler) syncMachine(
 		}
 	}
 
-	if fw, ok := firmwareMap[machineID]; ok {
-		if err := r.syncFirmwareComponents(ctx, machineID, fw, m); err != nil {
-			return fmt.Errorf("sync HFC: %w", err)
+	if seData != nil {
+		if fw, ok := seData.FirmwareVersions[machineID]; ok {
+			if err := r.syncFirmwareComponents(ctx, machineID, fw, m); err != nil {
+				return fmt.Errorf("sync HFC: %w", err)
+			}
 		}
 	}
 
@@ -121,13 +128,23 @@ func (r *Reconciler) getSkuMap(ctx context.Context) map[string]*nico.Sku {
 	return skuMap
 }
 
-func (r *Reconciler) getFirmwareMap(ctx context.Context) map[string]map[string]string {
+// siteExplorerData holds per-machine data extracted from a single
+// GetAllSiteExplorerEndpoint call to avoid fetching the endpoint list twice.
+type siteExplorerData struct {
+	FirmwareVersions map[string]map[string]string // machineID → component → version
+	BootMACs         map[string]string            // machineID → boot MAC address
+}
+
+func (r *Reconciler) getSiteExplorerData(ctx context.Context) *siteExplorerData {
 	endpoints, httpResp, err := r.NicoClient.GetAllSiteExplorerEndpoint(ctx, r.OrgName)
 	if err != nil || httpResp == nil || httpResp.StatusCode >= 300 {
 		return nil
 	}
 
-	fwMap := make(map[string]map[string]string)
+	data := &siteExplorerData{
+		FirmwareVersions: make(map[string]map[string]string),
+		BootMACs:         make(map[string]string),
+	}
 	for _, ep := range endpoints {
 		if ep.Report == nil {
 			continue
@@ -137,10 +154,21 @@ func (r *Reconciler) getFirmwareMap(ctx context.Context) map[string]map[string]s
 			continue
 		}
 		if len(ep.Report.FirmwareVersions) > 0 {
-			fwMap[*mid] = ep.Report.FirmwareVersions
+			data.FirmwareVersions[*mid] = ep.Report.FirmwareVersions
+		}
+		// Extract boot MAC from machineSetupStatus.evaluatedBootInterface.
+		// Prefer the full pair (MAC + Redfish interface ID); fall back to macOnly.
+		if setup := ep.Report.MachineSetupStatus; setup != nil {
+			if bi := setup.EvaluatedBootInterface; bi != nil {
+				if bi.Pair != nil && bi.Pair.MacAddress != "" {
+					data.BootMACs[*mid] = bi.Pair.MacAddress
+				} else if mac := bi.GetMacOnly(); mac != "" {
+					data.BootMACs[*mid] = mac
+				}
+			}
 		}
 	}
-	return fwMap
+	return data
 }
 
 // SetupWithManager registers the reconciler as a periodic runnable
@@ -196,13 +224,13 @@ func (r *Reconciler) sync(ctx context.Context) {
 	}
 
 	skuMap := r.getSkuMap(ctx)
-	firmwareMap := r.getFirmwareMap(ctx)
+	seData := r.getSiteExplorerData(ctx)
 
 	for _, m := range machines {
 		if m.Id == nil {
 			continue
 		}
-		if syncErr := r.syncMachine(ctx, m, skuMap, firmwareMap); syncErr != nil {
+		if syncErr := r.syncMachine(ctx, m, skuMap, seData); syncErr != nil {
 			logger.Error(syncErr, "Failed to sync machine", "machineId", *m.Id)
 		}
 	}

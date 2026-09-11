@@ -6,9 +6,16 @@ OpenShift Machine API actuator for provisioning bare-metal machines on NICo (NVI
 
 This provider implements the OpenShift Machine API actuator interface for NICo, enabling:
 
-- **Declarative machine provisioning** via `Machine` CRDs
+- **Declarative machine provisioning** via `Machine` CRDs — generic (`instanceTypeId`) and targeted (`machineId`) allocation
 - **Automated scaling** via `MachineSet` controllers
-- **Integration with OpenShift cluster lifecycle** and machine management
+- **MachineHealthCheck remediation** — detects MHC-triggered deletions, reports a `k8s-mhc` health report to NICo's HealthReport API, and cleans it up on recovery
+- **Health monitoring** — queries the HealthReport API (with JSONB fallback) and maps alerts to `MachineHealthy` / `NicoFaultRemediation` conditions
+- **Pre-flight health and validation checks** — blocks targeted instance creation if the physical machine has critical faults or a failing validation run; escalates to `FailureReason` after `MaxFaultBlockedAttempts` (default 3)
+- **Topology labels** — sets `topology.kubernetes.io/zone`, `node.kubernetes.io/instance-type`, `infra.nvidia.com/machine-id`, `infra.nvidia.com/nvlink-partition`, `infra.nvidia.com/nvlink-domain`, `infra.nvidia.com/infiniband-partition` for Kueue and Kai scheduler-aware GPU placement
+- **DPU Extension Services** — deploys specified DPU services via `UpdateInstance` immediately after instance creation
+- **BareMetalHost sync** — a separate polling controller syncs NICo machines to Metal3 `BareMetalHost` and `HostFirmwareComponents` CRs every 60 seconds
+- **Admission webhook** — validates `NicoMachineProviderSpec` at admission time: required fields, UUID format, immutable fields, subnet count
+- **Provisioning timeout** — sets `FailureReason` on the Machine after 30 minutes in a non-Ready state
 
 The provider translates OpenShift Machine API requests into NICo REST API calls (via the NCX Infra Controller REST SDK), managing the full lifecycle of bare-metal instances.
 
@@ -27,13 +34,22 @@ The provider translates OpenShift Machine API requests into NICo REST API calls 
 +-----------------------------------------------------+
 |   Machine API Provider for NICo (this repo)         |
 |  +----------------------------------------------+   |
-|  |  Machine Reconciler                          |   |
+|  |  Machine Reconciler (controller)             |   |
 |  |  +----------------------------------------+  |   |
 |  |  |  Actuator                              |  |   |
 |  |  |  - Create/Update/Delete/Exists         |  |   |
-|  |  |  - NicoMachineProviderSpec parser      |  |   |
+|  |  |  - Health monitoring & MHC remediation |  |   |
+|  |  |  - Topology labels, DPU services       |  |   |
 |  |  +----------+-----------------------------+  |   |
 |  +-------------+--------------------------------+   |
+|  +----------------------------------------------+   |
+|  |  BareMetalHost Controller (poll every 60s)   |   |
+|  |  - Syncs NICo machines → BMH + HFC CRs      |   |
+|  +----------------------------------------------+   |
+|  +----------------------------------------------+   |
+|  |  Admission Webhook                           |   |
+|  |  - Validates NicoMachineProviderSpec         |   |
+|  +----------------------------------------------+   |
 +----------------+------------------------------------+
                  |
                  v
@@ -58,17 +74,18 @@ The provider translates OpenShift Machine API requests into NICo REST API calls 
 ### SDK Dependency Note
 
 The Infra Controller REST SDK (`github.com/NVIDIA/infra-controller/rest-api/sdk/standard`)
-does not yet have tagged releases for its `sdk/standard` sub-module. Until upstream
-tags the module, `go.mod` uses a local `replace` directive pointing to a sibling checkout:
+does not publish sub-module-specific tags. `go.mod` pins to the commit corresponding
+to the `v2.2.0-rc.2` upstream release via a pseudo-version:
 
 ```
-replace github.com/NVIDIA/infra-controller/rest-api/sdk/standard => ../../NVIDIA/infra-controller/rest-api/sdk/standard
+github.com/NVIDIA/infra-controller/rest-api/sdk/standard v0.0.0-20260909164623-233d62db0072
 ```
 
-This requires a local clone of `github.com/NVIDIA/infra-controller` at the expected
-relative path. Monitor the upstream repository for a tagged release of the
-`rest-api/sdk/standard` sub-module. When available, remove the `replace` directive
-and update the `require` entry to the actual version.
+Update this pseudo-version when NVIDIA cuts a new NICo release. Derive it with:
+
+```bash
+go get github.com/NVIDIA/infra-controller/rest-api/sdk/standard@<commit-sha>
+```
 
 ## Prerequisites
 
@@ -255,8 +272,49 @@ spec:
 | `machineId` | string | Physical machine ID |
 | `instanceState` | string | Instance lifecycle state (Pending, Provisioning, Configuring, Ready, etc.) |
 | `addresses` | []MachineAddress | IP addresses assigned to the machine |
-| `conditions` | []Condition | Instance lifecycle conditions (InstanceReady, MachineHealthy, etc.) |
-| `healthLabels` | map[string]string | Health labels matching the CCM (nico.io/healthy) |
+| `conditions` | []metav1.Condition | Instance lifecycle conditions: `InstanceAllocating`, `InstanceProvisioning`, `InstanceBootstrapping`, `InstanceReady`, `InstanceTerminating`, `InstanceError`, `InstanceProvisioned`, `MachineHealthy`, `NicoFaultRemediation`, `FaultBlockedCreation` |
+| `healthLabels` | map[string]string | Health labels matching the CCM (`infra.nvidia.com/healthy`, `infra.nvidia.com/health-alert-count`) |
+
+## Prometheus Metrics
+
+All metrics are registered under the `nico_mapi_` namespace.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `nico_mapi_instance_provision_seconds` | Histogram | `instance_type` | Time from Create call to instance Ready state |
+| `nico_mapi_api_latency_seconds` | Histogram | `method` | NICo API call latency per method |
+| `nico_mapi_api_errors_total` | Counter | `method`, `status_code` | NICo API errors per method and HTTP status |
+| `nico_mapi_machines_managed` | Gauge | — | Machines currently managed by this provider |
+| `nico_mapi_machines_unhealthy` | Gauge | — | Machines with a `MachineHealthy=False` condition |
+| `nico_mapi_health_events_ingested_total` | Counter | — | Successful `CreateOrUpdateMachineHealthReport` calls |
+
+## Admission Webhook
+
+A validating webhook rejects `Machine` objects with an invalid `NicoMachineProviderSpec` at admission time:
+
+- **Required fields**: `siteId`, `tenantId`, `vpcId`, `subnetId`, and exactly one of `instanceTypeId` / `machineId`
+- **UUID format**: All ID fields (`siteId`, `tenantId`, `vpcId`, `subnetId`, `instanceTypeId`, `machineId`, `operatingSystemId`, `networkSecurityGroupId`, all `additionalSubnetIds`, all `dpuExtensionServices[*].serviceId`) must be valid UUIDs
+- **Immutability**: `siteId` and `tenantId` cannot change after the Machine is created
+
+## BareMetalHost Sync
+
+A separate polling controller syncs NICo machines to Metal3 CRs every 60 seconds. It is **disabled by default** — enable it with `--enable-bmh-sync=true` and provide credentials via the flags below.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--enable-bmh-sync` | `false` | Enable the BMH sync controller |
+| `--bmh-credentials-secret-name` | `nico-credentials` | Name of the credentials Secret |
+| `--bmh-credentials-secret-namespace` | `openshift-machine-api` | Namespace of the credentials Secret |
+| `--bmh-namespace` | `openshift-machine-api` | Namespace where BMH and HFC CRs are created |
+
+The credentials Secret must have provider-admin scope (the same fields as the machine credentials: `endpoint`, `orgName`, `token`).
+
+What gets synced:
+
+- **BareMetalHost** — created with `externallyProvisioned: true`; includes BMC address (`redfish+https://`), boot MAC address from `evaluatedBootInterface` in the Site Explorer report (falls back to first NIC in machine metadata when Site Explorer data is unavailable), `Spec.Online` driven by machine status (`Ready`/`InUse` = true), hardware details annotation (system vendor, BIOS, NICs, CPU, RAM, storage from machine metadata and SKU), and labels `infra.nvidia.com/machine-id` + `infra.nvidia.com/site-id`
+- **HostFirmwareComponents** — firmware versions from the Site Explorer (RMS integration), plus BMC firmware revision and per-GPU vBIOS (`gpu-N-vbios`)
+- **SKU cache** — `GetAllSku` results are cached for 5 minutes to reduce API calls
+- **403 degradation** — silently skips sync if the credential does not have provider-admin scope
 
 ## Development
 
@@ -287,8 +345,11 @@ machine-api-provider-nico/
 ├── pkg/
 │   ├── apis/             # NicoMachineProviderSpec types
 │   ├── actuators/        # Machine actuator implementation
+│   ├── metrics/          # Prometheus metrics
 │   ├── providerid/       # Provider ID parsing and formatting
-│   └── controllers/      # Machine and MachineSet reconcilers
+│   └── controllers/
+│       ├── machine/      # Machine reconciler
+│       └── baremetalhost/ # BareMetalHost and HostFirmwareComponents sync
 ├── config/               # Deployment manifests
 │   ├── rbac/             # RBAC permissions
 │   ├── manager/          # Controller deployment

@@ -59,9 +59,13 @@ type Disk struct {
 }
 
 // MachineToBaremetalHost converts a NICo Machine to a BareMetalHost CR.
+// bootMAC is the boot interface MAC address from Site Explorer
+// (endpoint.Report.MachineSetupStatus.EvaluatedBootInterface). When empty,
+// falls back to the first NIC in machine metadata as a best-effort heuristic.
 func MachineToBaremetalHost(
 	m nico.Machine,
 	sku *nico.Sku,
+	bootMAC string,
 	namespace string,
 ) *metal3.BareMetalHost {
 	bmh := &metal3.BareMetalHost{
@@ -92,10 +96,16 @@ func MachineToBaremetalHost(
 				Address: fmt.Sprintf("redfish+https://%s/redfish/v1/Systems/1", *m.Metadata.BmcInfo.Ip.Get()),
 			}
 		}
-		if len(m.Metadata.NetworkInterfaces) > 0 {
-			if mac := m.Metadata.NetworkInterfaces[0].MacAddress.Get(); mac != nil {
-				bmh.Spec.BootMACAddress = *mac
-			}
+	}
+
+	// Prefer the boot MAC from Site Explorer (evaluatedBootInterface); fall
+	// back to the first NIC in machine metadata when Site Explorer data is
+	// unavailable (e.g. 403 on the endpoint, or the machine hasn't been explored yet).
+	if bootMAC != "" {
+		bmh.Spec.BootMACAddress = bootMAC
+	} else if m.Metadata != nil && len(m.Metadata.NetworkInterfaces) > 0 {
+		if mac := m.Metadata.NetworkInterfaces[0].MacAddress.Get(); mac != nil {
+			bmh.Spec.BootMACAddress = *mac
 		}
 	}
 

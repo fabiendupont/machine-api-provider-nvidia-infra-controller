@@ -104,9 +104,6 @@ func validateProviderSpec(spec *NicoMachineProviderSpec) error {
 	if spec.SubnetID == "" {
 		return fmt.Errorf("subnetId is required")
 	}
-	if len(spec.AdditionalSubnetIDs) > 10 {
-		return fmt.Errorf("too many additional subnets (max 10, got %d)", len(spec.AdditionalSubnetIDs))
-	}
 	return nil
 }
 

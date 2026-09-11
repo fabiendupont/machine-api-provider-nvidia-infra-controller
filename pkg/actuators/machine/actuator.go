@@ -289,6 +289,17 @@ func NewActuator(k8sClient client.Client, eventRecorder events.EventRecorder) *A
 	}
 }
 
+// NewNicoAPIClient builds a NicoClientInterface from raw credentials.
+// Used by controllers that need a NICo client at startup (e.g. BMH sync).
+func NewNicoAPIClient(endpoint, token string) NicoClientInterface {
+	sdkCfg := nico.NewConfiguration()
+	sdkCfg.Servers = nico.ServerConfigurations{{URL: endpoint}}
+	return &nicoClient{
+		client: nico.NewAPIClient(sdkCfg),
+		token:  token,
+	}
+}
+
 // NewActuatorWithClient creates a new machine actuator with injected client (for testing)
 func NewActuatorWithClient(
 	k8sClient client.Client, eventRecorder events.EventRecorder,
@@ -321,10 +332,6 @@ func validateProviderSpec(spec *v1beta1.NicoMachineProviderSpec) error {
 	}
 	if spec.SubnetID == "" {
 		return fmt.Errorf("subnetId is required")
-	}
-	if len(spec.AdditionalSubnetIDs) > 10 {
-		return fmt.Errorf("too many additional subnets (max 10, got %d)",
-			len(spec.AdditionalSubnetIDs))
 	}
 	return nil
 }
