@@ -48,7 +48,7 @@ test-all: test test-integration ## Run all tests (unit + integration).
 
 .PHONY: test-e2e-live
 test-e2e-live: ## Run e2e tests against live NICo API.
-	kind get kubeconfig --name carbide-rest-local > /tmp/carbide-e2e-kubeconfig
+	kind get kubeconfig --name nico-rest-local > /tmp/carbide-e2e-kubeconfig
 	KUBECONFIG=/tmp/carbide-e2e-kubeconfig kubectl apply -f config/crd/external/
 	KUBECONFIG=/tmp/carbide-e2e-kubeconfig \
 		go test -tags=e2e ./test/e2e/ -v -ginkgo.v -ginkgo.label-filter="live"

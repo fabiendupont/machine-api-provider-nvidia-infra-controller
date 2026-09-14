@@ -38,9 +38,9 @@ import (
 )
 
 const (
-	keycloakRealm        = "carbide-dev"
-	keycloakClientID     = "carbide-api"
-	keycloakClientSecret = "carbide-local-secret"
+	keycloakRealm        = "nico-dev"
+	keycloakClientID     = "nico-api"
+	keycloakClientSecret = "nico-local-secret"
 	keycloakUsername      = "admin@example.com"
 	keycloakPassword     = "adminpassword"
 )
@@ -145,7 +145,7 @@ func createVPCViaAPI(token, orgName, siteID, name string) string {
 		"name":   name,
 		"siteId": siteID,
 	}
-	result, status := nicoAPIRequest("POST", fmt.Sprintf("/v2/org/%s/carbide/vpc", orgName), token, body)
+	result, status := nicoAPIRequest("POST", fmt.Sprintf("/v2/org/%s/nico/vpc", orgName), token, body)
 	Expect(status).To(Equal(http.StatusCreated), "Failed to create VPC: %v", result)
 	vpcID, ok := result["id"].(string)
 	Expect(ok).To(BeTrue(), "VPC response missing id")
@@ -163,7 +163,7 @@ func createIPBlockViaAPI(token, orgName, siteID, name string) string {
 		"protocolVersion": "IPv4",
 		"routingType":     "DatacenterOnly",
 	}
-	result, status := nicoAPIRequest("POST", fmt.Sprintf("/v2/org/%s/carbide/ipblock", orgName), token, body)
+	result, status := nicoAPIRequest("POST", fmt.Sprintf("/v2/org/%s/nico/ipblock", orgName), token, body)
 	Expect(status).To(Equal(http.StatusCreated), "Failed to create IP block: %v", result)
 	ipBlockID, ok := result["id"].(string)
 	Expect(ok).To(BeTrue(), "IP block response missing id")
@@ -179,7 +179,7 @@ func createSubnetViaAPI(token, orgName, vpcID, ipBlockID, name string) string {
 		"ipv4BlockId":  ipBlockID,
 		"prefixLength": 24,
 	}
-	result, status := nicoAPIRequest("POST", fmt.Sprintf("/v2/org/%s/carbide/subnet", orgName), token, body)
+	result, status := nicoAPIRequest("POST", fmt.Sprintf("/v2/org/%s/nico/subnet", orgName), token, body)
 	Expect(status).To(Equal(http.StatusCreated), "Failed to create subnet: %v", result)
 	subnetID, ok := result["id"].(string)
 	Expect(ok).To(BeTrue(), "Subnet response missing id")
@@ -190,7 +190,7 @@ func createSubnetViaAPI(token, orgName, vpcID, ipBlockID, name string) string {
 // getExistingSiteID finds the local-dev-site created by setup-local.sh.
 func getExistingSiteID(token, orgName string) string {
 	endpoint := os.Getenv("NVIDIA_CARBIDE_API_ENDPOINT")
-	apiBase := fmt.Sprintf("/v2/org/%s/carbide", orgName)
+	apiBase := fmt.Sprintf("/v2/org/%s/nico", orgName)
 
 	req, err := http.NewRequest("GET", endpoint+apiBase+"/site", nil)
 	Expect(err).NotTo(HaveOccurred())
@@ -214,7 +214,7 @@ func getExistingSiteID(token, orgName string) string {
 // ensureSiteRegistered ensures the site is in Registered state.
 func ensureSiteRegistered(siteID string) {
 	cmd := exec.Command("kubectl", "exec", "-n", "postgres", "statefulset/postgres", "--",
-		"psql", "-U", "forge", "-d", "forge", "-c",
+		"psql", "-U", "nico", "-d", "nico", "-c",
 		fmt.Sprintf("UPDATE site SET status = 'Registered' WHERE id = '%s' AND status != 'Registered'", siteID))
 	output, err := cmd.CombinedOutput()
 	Expect(err).NotTo(HaveOccurred(), "Failed to ensure site is registered: %s", string(output))
@@ -224,7 +224,7 @@ func ensureSiteRegistered(siteID string) {
 // enableTargetedInstanceCreation enables the TargetedInstanceCreation capability on the tenant.
 func enableTargetedInstanceCreation(tenantID string) {
 	cmd := exec.Command("kubectl", "exec", "-n", "postgres", "statefulset/postgres", "--",
-		"psql", "-U", "forge", "-d", "forge", "-c",
+		"psql", "-U", "nico", "-d", "nico", "-c",
 		fmt.Sprintf("UPDATE tenant SET config = COALESCE(config, '{}')::jsonb || '{\"targetedInstanceCreation\": true}'::jsonb WHERE id = '%s'", tenantID))
 	output, err := cmd.CombinedOutput()
 	Expect(err).NotTo(HaveOccurred(), "Failed to enable targeted instance creation: %s", string(output))
@@ -234,7 +234,7 @@ func enableTargetedInstanceCreation(tenantID string) {
 // ensureSubnetReady ensures the subnet is in Ready state.
 func ensureSubnetReady(subnetID string) {
 	cmd := exec.Command("kubectl", "exec", "-n", "postgres", "statefulset/postgres", "--",
-		"psql", "-U", "forge", "-d", "forge", "-c",
+		"psql", "-U", "nico", "-d", "nico", "-c",
 		fmt.Sprintf("UPDATE subnet SET status = 'Ready' WHERE id = '%s' AND status != 'Ready'", subnetID))
 	output, err := cmd.CombinedOutput()
 	Expect(err).NotTo(HaveOccurred(), "Failed to ensure subnet is ready: %s", string(output))
@@ -243,7 +243,7 @@ func ensureSubnetReady(subnetID string) {
 
 // getInfraProviderID retrieves the infrastructure provider ID for the org.
 func getInfraProviderID(token, orgName string) string {
-	apiBase := fmt.Sprintf("/v2/org/%s/carbide", orgName)
+	apiBase := fmt.Sprintf("/v2/org/%s/nico", orgName)
 	result, status := nicoAPIRequest("GET", apiBase+"/infrastructure-provider/current", token, nil)
 	Expect(status).To(Equal(http.StatusOK), "Failed to get infrastructure provider: %v", result)
 	id := result["id"].(string)
@@ -260,7 +260,7 @@ func createTestMachineInDB(siteID, infraProviderID, machineID string) {
 			"VALUES ('%s', '%s', '%s', '%s', 'Ready', false, true, false, false, false, NOW(), NOW()) ON CONFLICT (id) DO NOTHING",
 		machineID, infraProviderID, siteID, machineID)
 	cmd := exec.Command("kubectl", "exec", "-n", "postgres", "statefulset/postgres", "--",
-		"psql", "-U", "forge", "-d", "forge", "-c", sql)
+		"psql", "-U", "nico", "-d", "nico", "-c", sql)
 	output, err := cmd.CombinedOutput()
 	Expect(err).NotTo(HaveOccurred(), "Failed to create test machine in DB: %s", string(output))
 	_, _ = fmt.Fprintf(GinkgoWriter, "Created test machine %s in DB\n", machineID)
@@ -270,7 +270,7 @@ func createTestMachineInDB(siteID, infraProviderID, machineID string) {
 // Tenant -> IP Block -> Allocation -> VPC -> Subnet + test machine in DB.
 // Returns siteID, tenantID, vpcID, subnetID, machineID for use in tests.
 func setupInfrastructureViaAPI(token, orgName, prefix string) (siteID, tenantID, vpcID, subnetID, machineID string) {
-	apiBase := fmt.Sprintf("/v2/org/%s/carbide", orgName)
+	apiBase := fmt.Sprintf("/v2/org/%s/nico", orgName)
 
 	// Use the existing site (has a connected site-agent for Temporal workflows)
 	siteID = getExistingSiteID(token, orgName)
@@ -324,12 +324,12 @@ func setupInfrastructureViaAPI(token, orgName, prefix string) (siteID, tenantID,
 // cleanupInfrastructureViaAPI deletes the infrastructure created by setupInfrastructureViaAPI.
 func cleanupInfrastructureViaAPI(token, orgName, subnetID, vpcID, siteID string) {
 	if subnetID != "" {
-		nicoAPIRequest("DELETE", fmt.Sprintf("/v2/org/%s/carbide/subnet/%s", orgName, subnetID), token, nil)
+		nicoAPIRequest("DELETE", fmt.Sprintf("/v2/org/%s/nico/subnet/%s", orgName, subnetID), token, nil)
 	}
 	if vpcID != "" {
-		nicoAPIRequest("DELETE", fmt.Sprintf("/v2/org/%s/carbide/vpc/%s", orgName, vpcID), token, nil)
+		nicoAPIRequest("DELETE", fmt.Sprintf("/v2/org/%s/nico/vpc/%s", orgName, vpcID), token, nil)
 	}
 	if siteID != "" {
-		nicoAPIRequest("DELETE", fmt.Sprintf("/v2/org/%s/carbide/site/%s", orgName, siteID), token, nil)
+		nicoAPIRequest("DELETE", fmt.Sprintf("/v2/org/%s/nico/site/%s", orgName, siteID), token, nil)
 	}
 }

@@ -14,7 +14,7 @@ jobs:
       KUBECONFIG: /tmp/carbide-e2e-kubeconfig
       NVIDIA_CARBIDE_API_ENDPOINT: http://localhost:8388
       NVIDIA_CARBIDE_KEYCLOAK_URL: http://localhost:8082
-      NVIDIA_CARBIDE_API_ENDPOINT_INTERNAL: http://carbide-rest-api.carbide-rest.svc:8388
+      NVIDIA_CARBIDE_API_ENDPOINT_INTERNAL: http://nico-rest-api.nico-rest.svc:8388
       IMG: localhost/machine-api-provider-nico:e2e
     steps:
       - name: Checkout provider
