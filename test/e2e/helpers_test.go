@@ -144,6 +144,11 @@ func createVPCViaAPI(token, orgName, siteID, name string) string {
 	body := map[string]interface{}{
 		"name":   name,
 		"siteId": siteID,
+		// Subnets can only be created on Ethernet VPCs (see subnet handler:
+		// "VPC ... must have Ethernet network virtualization type"). When the
+		// type is omitted the site defaults it to FNN (native networking is
+		// enabled on local-dev-site), so request it explicitly.
+		"networkVirtualizationType": "ETHERNET_VIRTUALIZER",
 	}
 	result, status := nicoAPIRequest("POST", fmt.Sprintf("/v2/org/%s/nico/vpc", orgName), token, body)
 	Expect(status).To(Equal(http.StatusCreated), "Failed to create VPC: %v", result)
@@ -221,14 +226,78 @@ func ensureSiteRegistered(siteID string) {
 	_, _ = fmt.Fprintf(GinkgoWriter, "Ensured site %s is Registered\n", siteID)
 }
 
-// enableTargetedInstanceCreation enables the TargetedInstanceCreation capability on the tenant.
-func enableTargetedInstanceCreation(tenantID string) {
+// listTenantAccounts returns the tenant accounts for the org (the list endpoint
+// returns a bare JSON array, so it can't go through nicoAPIRequest).
+func listTenantAccounts(token, orgName string) []map[string]interface{} {
+	endpoint := os.Getenv("NVIDIA_CARBIDE_API_ENDPOINT")
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v2/org/%s/nico/tenant/account", endpoint, orgName), nil)
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+	var accounts []map[string]interface{}
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &accounts)
+	}
+	return accounts
+}
+
+// ensureTargetedInstanceCreationAccount ensures a Ready TenantAccount exists with
+// the TargetedInstanceCreation capability enabled. The controller checks this via
+// the TenantAccount API (GetAllTenantAccount -> SiteCapabilities); when that call
+// succeeds it does NOT fall back to the deprecated tenant.config flag, so the
+// account must exist and be Ready. The capability validation requires exactly one
+// entry with empty siteIds (the global default), which the controller treats as
+// "applies to all sites". Accounts are created "Invited" ("pending accept") and
+// there is no API to accept them in the mock stack, so force Ready in the DB like
+// the other status hacks.
+func ensureTargetedInstanceCreationAccount(token, orgName, infraProviderID string) {
+	apiBase := fmt.Sprintf("/v2/org/%s/nico", orgName)
+
+	// Reuse an existing account or create one (create is not idempotent).
+	var accountID string
+	if accounts := listTenantAccounts(token, orgName); len(accounts) > 0 {
+		accountID = accounts[0]["id"].(string)
+	} else {
+		result, status := nicoAPIRequest("POST", apiBase+"/tenant/account", token, map[string]interface{}{
+			"tenantOrg":                orgName,
+			"infrastructureProviderId": infraProviderID,
+		})
+		Expect(status).To(Equal(http.StatusCreated), "Failed to create tenant account: %v", result)
+		accountID = result["id"].(string)
+	}
+
+	// Enable targeted instance creation globally (single empty-siteIds entry).
+	result, status := nicoAPIRequest("PATCH", fmt.Sprintf("%s/tenant/account/%s", apiBase, accountID), token, map[string]interface{}{
+		"siteCapabilities": []map[string]interface{}{
+			{"siteIds": []string{}, "targetedInstanceCreation": true},
+		},
+	})
+	Expect(status).To(Equal(http.StatusOK), "Failed to set tenant account capabilities: %v", result)
+
+	// Force Ready (no API to accept the account in the mock stack).
 	cmd := exec.Command("kubectl", "exec", "-n", "postgres", "statefulset/postgres", "--",
 		"psql", "-U", "nico", "-d", "nico", "-c",
-		fmt.Sprintf("UPDATE tenant SET config = COALESCE(config, '{}')::jsonb || '{\"targetedInstanceCreation\": true}'::jsonb WHERE id = '%s'", tenantID))
+		fmt.Sprintf("UPDATE tenant_account SET status = 'Ready' WHERE id = '%s' AND status != 'Ready'", accountID))
 	output, err := cmd.CombinedOutput()
-	Expect(err).NotTo(HaveOccurred(), "Failed to enable targeted instance creation: %s", string(output))
-	_, _ = fmt.Fprintf(GinkgoWriter, "Enabled TargetedInstanceCreation for tenant %s\n", tenantID)
+	Expect(err).NotTo(HaveOccurred(), "Failed to ensure tenant account is ready: %s", string(output))
+	_, _ = fmt.Fprintf(GinkgoWriter, "Ensured tenant account %s is Ready with targeted instance creation\n", accountID)
+}
+
+// ensureVPCReady ensures the VPC is in Ready state. mock-core completes the
+// create workflow but never advances the VPC out of Provisioning, and the
+// subnet handler requires the VPC to be Ready ("VPC ... must be in Ready state
+// in order to create Subnet"), so force it directly like the other status hacks.
+func ensureVPCReady(vpcID string) {
+	cmd := exec.Command("kubectl", "exec", "-n", "postgres", "statefulset/postgres", "--",
+		"psql", "-U", "nico", "-d", "nico", "-c",
+		fmt.Sprintf("UPDATE vpc SET status = 'Ready' WHERE id = '%s' AND status != 'Ready'", vpcID))
+	output, err := cmd.CombinedOutput()
+	Expect(err).NotTo(HaveOccurred(), "Failed to ensure VPC is ready: %s", string(output))
+	_, _ = fmt.Fprintf(GinkgoWriter, "Ensured VPC %s is Ready\n", vpcID)
 }
 
 // ensureSubnetReady ensures the subnet is in Ready state.
@@ -282,8 +351,11 @@ func setupInfrastructureViaAPI(token, orgName, prefix string) (siteID, tenantID,
 	Expect(tStatus).To(Equal(http.StatusOK), "Failed to get current tenant: %v", currentTenant)
 	tenantID = currentTenant["id"].(string)
 	_, _ = fmt.Fprintf(GinkgoWriter, "Tenant ID: %s\n", tenantID)
-	enableTargetedInstanceCreation(tenantID)
 
+	// Enable targeted instance creation via the TenantAccount API. The controller
+	// checks the tenant account's SiteCapabilities, not the deprecated tenant config.
+	infraProviderID := getInfraProviderID(token, orgName)
+	ensureTargetedInstanceCreationAccount(token, orgName, infraProviderID)
 
 	// Create IP Block
 	ipBlockID := createIPBlockViaAPI(token, orgName, siteID, prefix+"-ipblock")
@@ -307,6 +379,7 @@ func setupInfrastructureViaAPI(token, orgName, prefix string) (siteID, tenantID,
 
 	// Create VPC
 	vpcID = createVPCViaAPI(token, orgName, siteID, prefix+"-vpc")
+	ensureVPCReady(vpcID)
 
 	// Create Subnet (uses child IP block, not the parent)
 	subnetID = createSubnetViaAPI(token, orgName, vpcID, childIPBlockID, prefix+"-subnet")
@@ -314,7 +387,6 @@ func setupInfrastructureViaAPI(token, orgName, prefix string) (siteID, tenantID,
 
 	// Create a test machine in DB (mock-core doesn't persist machines,
 	// so we insert one directly for the controller to use with machineId)
-	infraProviderID := getInfraProviderID(token, orgName)
 	machineID = prefix + "-machine"
 	createTestMachineInDB(siteID, infraProviderID, machineID)
 

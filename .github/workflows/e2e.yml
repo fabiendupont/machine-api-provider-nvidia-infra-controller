@@ -59,6 +59,25 @@ jobs:
       - name: Export kubeconfig
         run: kind get kubeconfig --name nico-rest-local > $KUBECONFIG
 
+      # Work around an upstream bug in NICo v2.2.0-rc.2's Helm deploy path:
+      # `make kind-reset` runs `helm-deploy-site-agent`, whose conditional
+      #   $(if $(filter-out true,$(LOCAL_CORE)),--set envConfig.CORE_GRPC_ADDRESS=...)
+      # never fires when LOCAL_CORE is empty (the default), so the site-agent's
+      # CORE_GRPC_ADDRESS is left blank. Even setting LOCAL_CORE=false does not
+      # help: setup-local.sh then re-applies the ConfigMap client-side and blanks
+      # the value back out, fighting Helm's server-side apply. With an empty
+      # address the site-agent falls back to a non-existent default core-grpc
+      # endpoint ("produced zero addresses"), its Temporal worker never runs the
+      # CreateVpcOnSite activity, and every VPC create times out with HTTP 500.
+      # Point the site-agent at the in-cluster mock-core directly (mirrors what
+      # upstream's own kustomize path does) and restart it.
+      - name: Fix site-agent core-grpc address (upstream v2.2.0-rc.2 workaround)
+        run: |
+          kubectl -n nico-rest patch configmap nico-rest-site-agent-config --type merge \
+            -p '{"data":{"CORE_GRPC_ADDRESS":"nico-rest-mock-core:11079","CORE_GRPC_SEC_OPT":"0"}}'
+          kubectl -n nico-rest rollout restart statefulset/nico-rest-site-agent
+          kubectl -n nico-rest rollout status statefulset/nico-rest-site-agent --timeout=180s
+
       - name: Install Machine API CRDs
         run: kubectl apply -f config/crd/external/
         working-directory: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
@@ -92,3 +111,20 @@ jobs:
             -n machine-api-provider-nico-system --tail=200
           echo "=== Machine objects ==="
           kubectl get machines.machine.openshift.io -A -o yaml || true
+
+      - name: Dump NICo stack diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== nico-rest pods ==="
+          kubectl get pods -n nico-rest -o wide || true
+          echo "=== site-agent config (core-grpc / temporal keys) ==="
+          kubectl -n nico-rest get configmap nico-rest-site-agent-config \
+            -o jsonpath='{.data.CORE_GRPC_ADDRESS}{"\n"}{.data.CORE_GRPC_SEC_OPT}{"\n"}{.data.CLUSTER_ID}{"\n"}{.data.TEMPORAL_SUBSCRIBE_NAMESPACE}{"\n"}{.data.TEMPORAL_SUBSCRIBE_QUEUE}{"\n"}' || true
+          echo "=== site-agent logs ==="
+          kubectl -n nico-rest logs statefulset/nico-rest-site-agent --tail=200 || true
+          echo "=== mock-core logs ==="
+          kubectl -n nico-rest logs deployment/nico-rest-mock-core --tail=100 || true
+          echo "=== nico-rest-api logs ==="
+          kubectl -n nico-rest logs deployment/nico-rest-api --tail=100 || true
+          echo "=== temporal pods ==="
+          kubectl get pods -n temporal -o wide || true
