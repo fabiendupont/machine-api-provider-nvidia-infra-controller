@@ -8,7 +8,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # Canonical image name (matches Makefile IMAGE_TAG_BASE, config/manager/deployment.yaml,
+  # and the OLM bundle/catalog). Uses the repository owner so forks publish under their own
+  # namespace, but keeps the short "machine-api-provider-nico" name rather than the repo slug.
+  IMAGE_NAME: ${{ github.repository_owner }}/machine-api-provider-nico
 
 jobs:
   build:
@@ -50,6 +53,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
         uses: docker/build-push-action@v7
