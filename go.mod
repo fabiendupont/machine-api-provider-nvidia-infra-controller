@@ -6,7 +6,7 @@ require (
 	github.com/NVIDIA/infra-controller/rest-api/sdk/standard v0.0.0-20260909164623-233d62db0072
 	github.com/google/uuid v1.6.0
 	github.com/metal3-io/baremetal-operator/apis v0.13.3
-	github.com/onsi/ginkgo/v2 v2.32.1
+	github.com/onsi/ginkgo/v2 v2.32.2
 	github.com/onsi/gomega v1.43.0
 	github.com/openshift/api v0.0.0-20260827203510-c7d4aa14a764
 	github.com/prometheus/client_golang v1.24.1
