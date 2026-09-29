@@ -64,6 +64,8 @@ func main() {
 	var bmhCredentialsSecretName string
 	var bmhCredentialsSecretNamespace string
 	var bmhNamespace string
+	var bmhExternallyProvisioned bool
+	var bmhBMCCredentialsSecretTemplate string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080",
 		"The address the metric endpoint binds to.")
@@ -89,6 +91,13 @@ func main() {
 		"Namespace of the NICo credentials Secret for BMH sync.")
 	flag.StringVar(&bmhNamespace, "bmh-namespace", "openshift-machine-api",
 		"Namespace in which BareMetalHost and HostFirmwareComponents CRs are created.")
+	flag.BoolVar(&bmhExternallyProvisioned, "bmh-externally-provisioned", true,
+		"When true (default), NICo owns provisioning and BMO acts as inventory only. "+
+			"When false, BMO/Ironic drives provisioning; --bmh-bmc-credentials-secret-template "+
+			"must match the per-machine Secrets (or ESO-managed Secrets) containing BMC credentials.")
+	flag.StringVar(&bmhBMCCredentialsSecretTemplate, "bmh-bmc-credentials-secret-template", "bmc-%s",
+		"fmt template (one %%s = machine ID) for the per-machine BMC credentials Secret name. "+
+			"Only used when --bmh-externally-provisioned=false.")
 
 	opts := zap.Options{
 		Development: false,
@@ -169,7 +178,11 @@ func main() {
 				"secret", bmhCredentialsSecretNamespace+"/"+bmhCredentialsSecretName)
 			os.Exit(1)
 		}
-		if err := bmhcontroller.SetupWithManager(mgr, nicoClient, orgName, bmhNamespace); err != nil {
+		bmhCfg := bmhcontroller.BMHSyncConfig{
+			ExternallyProvisioned:        bmhExternallyProvisioned,
+			BMCCredentialsSecretTemplate: bmhBMCCredentialsSecretTemplate,
+		}
+		if err := bmhcontroller.SetupWithManager(mgr, nicoClient, orgName, bmhNamespace, bmhCfg); err != nil {
 			setupLog.Error(err, "unable to set up BMH sync controller")
 			os.Exit(1)
 		}

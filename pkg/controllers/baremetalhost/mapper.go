@@ -67,6 +67,7 @@ func MachineToBaremetalHost(
 	sku *nico.Sku,
 	bootMAC string,
 	namespace string,
+	cfg BMHSyncConfig,
 ) *metal3.BareMetalHost {
 	bmh := &metal3.BareMetalHost{
 		ObjectMeta: metav1.ObjectMeta{
@@ -78,7 +79,7 @@ func MachineToBaremetalHost(
 		},
 		Spec: metal3.BareMetalHostSpec{
 			Online:                true,
-			ExternallyProvisioned: true,
+			ExternallyProvisioned: cfg.ExternallyProvisioned,
 		},
 	}
 
@@ -92,9 +93,13 @@ func MachineToBaremetalHost(
 
 	if m.Metadata != nil {
 		if m.Metadata.BmcInfo != nil && m.Metadata.BmcInfo.Ip.Get() != nil {
-			bmh.Spec.BMC = metal3.BMCDetails{
+			bmc := metal3.BMCDetails{
 				Address: fmt.Sprintf("redfish+https://%s/redfish/v1/Systems/1", *m.Metadata.BmcInfo.Ip.Get()),
 			}
+			if !cfg.ExternallyProvisioned && cfg.BMCCredentialsSecretTemplate != "" {
+				bmc.CredentialsName = fmt.Sprintf(cfg.BMCCredentialsSecretTemplate, derefStr(m.Id))
+			}
+			bmh.Spec.BMC = bmc
 		}
 	}
 

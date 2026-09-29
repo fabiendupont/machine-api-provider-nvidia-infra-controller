@@ -306,12 +306,22 @@ A separate polling controller syncs NICo machines to Metal3 CRs every 60 seconds
 | `--bmh-credentials-secret-name` | `nico-credentials` | Name of the credentials Secret |
 | `--bmh-credentials-secret-namespace` | `openshift-machine-api` | Namespace of the credentials Secret |
 | `--bmh-namespace` | `openshift-machine-api` | Namespace where BMH and HFC CRs are created |
+| `--bmh-externally-provisioned` | `true` | When `true`, NICo owns provisioning and BMO acts as inventory only. When `false`, BMO/Ironic drives provisioning (see below). |
+| `--bmh-bmc-credentials-secret-template` | `bmc-%s` | `fmt` template (one `%s` = machine ID) for the per-machine BMC credentials Secret name. Only used when `--bmh-externally-provisioned=false`. |
 
 The credentials Secret must have provider-admin scope (the same fields as the machine credentials: `endpoint`, `orgName`, `token`).
 
-What gets synced:
+### Provisioning modes
 
-- **BareMetalHost** — created with `externallyProvisioned: true`; includes BMC address (`redfish+https://`), boot MAC address from `evaluatedBootInterface` in the Site Explorer report (falls back to first NIC in machine metadata when Site Explorer data is unavailable), `Spec.Online` driven by machine status (`Ready`/`InUse` = true), hardware details annotation (system vendor, BIOS, NICs, CPU, RAM, storage from machine metadata and SKU), and labels `infra.nvidia.com/machine-id` + `infra.nvidia.com/site-id`
+**NICo-managed (default, `--bmh-externally-provisioned=true`):** BMH CRs are created with `externallyProvisioned: true`. BMO acts as an inventory store only — it does not contact Ironic or drive PXE/Redfish provisioning. No BMC credentials Secret is needed on the BMH.
+
+**BMO/Ironic-managed (`--bmh-externally-provisioned=false`):** BMH CRs are created with `externallyProvisioned: false` and `Spec.BMC.CredentialsName` set to a per-machine Secret name derived from `--bmh-bmc-credentials-secret-template` (e.g. `bmc-<machine-id>`). BMO will drive Ironic provisioning via Redfish. You are responsible for ensuring those Secrets exist and contain valid `username` and `password` keys before BMO attempts provisioning.
+
+If NICo stores BMC credentials in Vault, use [External Secrets Operator](https://external-secrets.io/) with a `ClusterSecretStore` pointing at your Vault instance and one `ExternalSecret` per machine targeting the same name pattern (e.g. `bmc-<machine-id>`). This controller sets the `CredentialsName` reference; populating the Secret is out of scope.
+
+### What gets synced
+
+- **BareMetalHost** — includes BMC address (`redfish+https://`), boot MAC address from `evaluatedBootInterface` in the Site Explorer report (falls back to first NIC in machine metadata when Site Explorer data is unavailable), `Spec.Online` driven by machine status (`Ready`/`InUse` = true), hardware details annotation (system vendor, BIOS, NICs, CPU, RAM, storage from machine metadata and SKU), and labels `infra.nvidia.com/machine-id` + `infra.nvidia.com/site-id`
 - **HostFirmwareComponents** — firmware versions from the Site Explorer (RMS integration), plus BMC firmware revision and per-GPU vBIOS (`gpu-N-vbios`)
 - **SKU cache** — `GetAllSku` results are cached for 5 minutes to reduce API calls
 - **403 degradation** — silently skips sync if the credential does not have provider-admin scope

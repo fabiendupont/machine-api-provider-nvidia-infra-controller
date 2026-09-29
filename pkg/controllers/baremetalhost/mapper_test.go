@@ -9,6 +9,9 @@ import (
 
 func ptr[T any](v T) *T { return &v }
 
+var defaultCfg = BMHSyncConfig{ExternallyProvisioned: true}
+var ironicCfg = BMHSyncConfig{ExternallyProvisioned: false, BMCCredentialsSecretTemplate: "bmc-%s"}
+
 func TestMachineToBaremetalHost_BasicFields(t *testing.T) {
 	m := nico.Machine{
 		Id:     ptr("machine-1"),
@@ -19,7 +22,7 @@ func TestMachineToBaremetalHost_BasicFields(t *testing.T) {
 	m.ProductName = *nico.NewNullableString(ptr("DGX H100"))
 	m.SerialNumber = *nico.NewNullableString(ptr("SN-123"))
 
-	bmh := MachineToBaremetalHost(m, nil, "", "test-ns")
+	bmh := MachineToBaremetalHost(m, nil, "", "test-ns", defaultCfg)
 
 	if bmh.Name != "nico-machine-1" {
 		t.Errorf("Name = %s, want nico-machine-1", bmh.Name)
@@ -41,7 +44,38 @@ func TestMachineToBaremetalHost_BasicFields(t *testing.T) {
 	}
 }
 
-func TestMachineToBaremetalHost_BMCAndMAC(t *testing.T) {
+func TestMachineToBaremetalHost_BMCExternallyProvisioned(t *testing.T) {
+	m := nico.Machine{
+		Id:     ptr("machine-1"),
+		Status: ptr(nico.MACHINESTATUS_IN_USE),
+		Metadata: &nico.MachineMetadata{
+			BmcInfo: &nico.MachineBMCInfo{
+				Ip: *nico.NewNullableString(ptr("10.0.0.100")),
+			},
+			NetworkInterfaces: []nico.MachineNetworkInterface{
+				{MacAddress: *nico.NewNullableString(ptr("aa:bb:cc:dd:ee:ff"))},
+			},
+		},
+	}
+
+	bmh := MachineToBaremetalHost(m, nil, "", "test-ns", defaultCfg)
+
+	if bmh.Spec.BMC.Address != "redfish+https://10.0.0.100/redfish/v1/Systems/1" {
+		t.Errorf("BMC address = %s", bmh.Spec.BMC.Address)
+	}
+	// ExternallyProvisioned=true: BMO does not drive Ironic, no credentials needed.
+	if bmh.Spec.BMC.CredentialsName != "" {
+		t.Errorf("BMC CredentialsName = %q, want empty for externally-provisioned mode", bmh.Spec.BMC.CredentialsName)
+	}
+	if bmh.Spec.ExternallyProvisioned != true {
+		t.Error("Expected externallyProvisioned=true")
+	}
+	if bmh.Spec.BootMACAddress != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("BootMACAddress (fallback) = %s, want aa:bb:cc:dd:ee:ff", bmh.Spec.BootMACAddress)
+	}
+}
+
+func TestMachineToBaremetalHost_BMCIronicMode(t *testing.T) {
 	m := nico.Machine{
 		Id:     ptr("machine-1"),
 		Status: ptr(nico.MACHINESTATUS_IN_USE),
@@ -56,10 +90,17 @@ func TestMachineToBaremetalHost_BMCAndMAC(t *testing.T) {
 	}
 
 	// No bootMAC from Site Explorer — should fall back to first NIC
-	bmh := MachineToBaremetalHost(m, nil, "", "test-ns")
+	bmh := MachineToBaremetalHost(m, nil, "", "test-ns", ironicCfg)
 
 	if bmh.Spec.BMC.Address != "redfish+https://10.0.0.100/redfish/v1/Systems/1" {
 		t.Errorf("BMC address = %s", bmh.Spec.BMC.Address)
+	}
+	// ExternallyProvisioned=false: per-machine secret name derived from template.
+	if bmh.Spec.BMC.CredentialsName != "bmc-machine-1" {
+		t.Errorf("BMC CredentialsName = %q, want bmc-machine-1", bmh.Spec.BMC.CredentialsName)
+	}
+	if bmh.Spec.ExternallyProvisioned != false {
+		t.Error("Expected externallyProvisioned=false")
 	}
 	if bmh.Spec.BootMACAddress != "aa:bb:cc:dd:ee:ff" {
 		t.Errorf("BootMACAddress (fallback) = %s, want aa:bb:cc:dd:ee:ff", bmh.Spec.BootMACAddress)
@@ -79,7 +120,7 @@ func TestMachineToBaremetalHost_BootMACFromSiteExplorer(t *testing.T) {
 	}
 
 	siteExplorerBootMAC := "11:22:33:44:55:66"
-	bmh := MachineToBaremetalHost(m, nil, siteExplorerBootMAC, "test-ns")
+	bmh := MachineToBaremetalHost(m, nil, siteExplorerBootMAC, "test-ns", defaultCfg)
 
 	if bmh.Spec.BootMACAddress != siteExplorerBootMAC {
 		t.Errorf("BootMACAddress = %s, want %s (Site Explorer)", bmh.Spec.BootMACAddress, siteExplorerBootMAC)
@@ -92,7 +133,7 @@ func TestMachineToBaremetalHost_Offline(t *testing.T) {
 		Status: ptr(nico.MACHINESTATUS_MAINTENANCE),
 	}
 
-	bmh := MachineToBaremetalHost(m, nil, "", "test-ns")
+	bmh := MachineToBaremetalHost(m, nil, "", "test-ns", defaultCfg)
 	if bmh.Spec.Online {
 		t.Error("Expected online=false for Maintenance machine")
 	}
@@ -118,7 +159,7 @@ func TestMachineToBaremetalHost_WithSKU(t *testing.T) {
 		},
 	}
 
-	bmh := MachineToBaremetalHost(m, sku, "", "test-ns")
+	bmh := MachineToBaremetalHost(m, sku, "", "test-ns", defaultCfg)
 
 	var hd HardwareDetails
 	err := json.Unmarshal([]byte(bmh.Annotations[hardwareDetailsAnnotation]), &hd)
@@ -157,7 +198,7 @@ func TestMachineToBaremetalHost_DMIData(t *testing.T) {
 		},
 	}
 
-	bmh := MachineToBaremetalHost(m, nil, "", "test-ns")
+	bmh := MachineToBaremetalHost(m, nil, "", "test-ns", defaultCfg)
 
 	var hd HardwareDetails
 	_ = json.Unmarshal([]byte(bmh.Annotations[hardwareDetailsAnnotation]), &hd)

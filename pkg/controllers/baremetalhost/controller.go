@@ -22,6 +22,21 @@ const (
 	skuCacheTTL  = 5 * time.Minute
 )
 
+// BMHSyncConfig controls how BareMetalHost CRs are created by the sync controller.
+type BMHSyncConfig struct {
+	// ExternallyProvisioned sets Spec.ExternallyProvisioned on created BMH CRs.
+	// When true (default), NICo owns provisioning and BMO acts as inventory only.
+	// When false, BMO/Ironic drives provisioning and BMCCredentialsSecretTemplate
+	// must name a Secret (or ESO-managed Secret) containing BMC username/password.
+	ExternallyProvisioned bool
+
+	// BMCCredentialsSecretTemplate is a fmt format string with one %s placeholder
+	// that is substituted with the NICo machine ID to produce the per-machine
+	// Kubernetes Secret name holding BMC credentials (e.g. "bmc-%s").
+	// Only used when ExternallyProvisioned is false.
+	BMCCredentialsSecretTemplate string
+}
+
 // Reconciler syncs NICo machines to BareMetalHost and
 // HostFirmwareComponents CRs.
 type Reconciler struct {
@@ -29,6 +44,7 @@ type Reconciler struct {
 	NicoClient machine.NicoClientInterface
 	OrgName    string
 	Namespace  string
+	Config     BMHSyncConfig
 
 	skuCache       map[string]*nico.Sku
 	skuCacheExpiry time.Time
@@ -49,7 +65,7 @@ func (r *Reconciler) syncMachine(
 		bootMAC = seData.BootMACs[machineID]
 	}
 
-	desired := MachineToBaremetalHost(m, sku, bootMAC, r.Namespace)
+	desired := MachineToBaremetalHost(m, sku, bootMAC, r.Namespace, r.Config)
 
 	existing := &metal3.BareMetalHost{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
@@ -177,12 +193,14 @@ func SetupWithManager(
 	mgr ctrl.Manager,
 	nicoClient machine.NicoClientInterface,
 	orgName, namespace string,
+	cfg BMHSyncConfig,
 ) error {
 	r := &Reconciler{
 		Client:     mgr.GetClient(),
 		NicoClient: nicoClient,
 		OrgName:    orgName,
 		Namespace:  namespace,
+		Config:     cfg,
 	}
 
 	return mgr.Add(r)
