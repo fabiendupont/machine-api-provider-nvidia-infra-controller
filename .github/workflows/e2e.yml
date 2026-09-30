@@ -43,12 +43,37 @@ jobs:
       - name: Increase inotify limits
         run: sudo sysctl -w fs.inotify.max_user_instances=512
 
+      - name: Restore NICo image cache
+        id: nico-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/nico-images.tar
+          key: nico-images-v2.2.0-rc.2
+
+      - name: Load cached NICo images
+        if: steps.nico-cache.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/nico-images.tar
+
       - name: Deploy NICo REST stack
         run: make kind-reset
         working-directory: NVIDIA/infra-controller/rest-api
         timeout-minutes: 20
         env:
           KUBECONFIG: ""
+
+      - name: Save NICo images to cache
+        if: steps.nico-cache.outputs.cache-hit != 'true'
+        run: |
+          docker save \
+            localhost:5000/nico-rest-api:latest \
+            localhost:5000/nico-rest-workflow:latest \
+            localhost:5000/nico-rest-site-manager:latest \
+            localhost:5000/nico-rest-site-agent:latest \
+            localhost:5000/nico-rest-mock-core:latest \
+            localhost:5000/nico-rest-db:latest \
+            localhost:5000/nico-rest-cert-manager:latest \
+            localhost:5000/nico-mcp:latest \
+            -o /tmp/nico-images.tar
 
       - name: Verify NICo API health
         run: |
