@@ -157,7 +157,10 @@ var _ = Describe("Live Machine API Provider E2E", Label("live"), func() {
 				}
 
 				instanceID, _, _ := unstructured.NestedString(result.Object, "status", "providerStatus", "instanceId")
-				_, _ = fmt.Fprintf(GinkgoWriter, "Machine instanceId=%s\n", instanceID)
+				conditions, _, _ := unstructured.NestedSlice(result.Object, "status", "providerStatus", "conditions")
+				errorMessage, _, _ := unstructured.NestedString(result.Object, "status", "errorMessage")
+				_, _ = fmt.Fprintf(GinkgoWriter, "Machine instanceId=%s errorMessage=%q conditions=%v\n",
+					instanceID, errorMessage, conditions)
 				return instanceID
 			}, machineCreationTimeout, pollInterval).ShouldNot(BeEmpty(), "Machine was not provisioned with an instance ID")
 

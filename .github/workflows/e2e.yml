@@ -19,6 +19,7 @@ jobs:
       NVIDIA_CARBIDE_API_ENDPOINT: http://localhost:8388
       NVIDIA_CARBIDE_KEYCLOAK_URL: http://localhost:8082
       NVIDIA_CARBIDE_API_ENDPOINT_INTERNAL: http://nico-rest-api.nico-rest.svc:8388
+      NVIDIA_CARBIDE_KEYCLOAK_URL_INTERNAL: http://keycloak.nico-rest.svc.cluster.local:8082
       IMG: localhost/machine-api-provider-nico:e2e
       GHCR_IMG: ghcr.io/${{ github.repository }}:sha-${{ github.event.workflow_run.head_sha }}
     steps:

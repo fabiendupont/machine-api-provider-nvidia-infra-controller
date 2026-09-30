@@ -89,8 +89,11 @@ func createCredentialsSecret(ctx context.Context, k8sClient client.Client, name,
 	}
 	Expect(endpoint).NotTo(BeEmpty(), "NVIDIA_CARBIDE_API_ENDPOINT or NVIDIA_CARBIDE_API_ENDPOINT_INTERNAL must be set")
 
-	keycloakURL := os.Getenv("NVIDIA_CARBIDE_KEYCLOAK_URL")
-	Expect(keycloakURL).NotTo(BeEmpty(), "NVIDIA_CARBIDE_KEYCLOAK_URL must be set")
+	keycloakURL := os.Getenv("NVIDIA_CARBIDE_KEYCLOAK_URL_INTERNAL")
+	if keycloakURL == "" {
+		keycloakURL = os.Getenv("NVIDIA_CARBIDE_KEYCLOAK_URL")
+	}
+	Expect(keycloakURL).NotTo(BeEmpty(), "NVIDIA_CARBIDE_KEYCLOAK_URL or NVIDIA_CARBIDE_KEYCLOAK_URL_INTERNAL must be set")
 	tokenURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/token", keycloakURL, keycloakRealm)
 
 	secret := &corev1.Secret{
