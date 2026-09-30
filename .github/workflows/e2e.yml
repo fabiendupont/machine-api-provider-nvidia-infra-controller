@@ -18,12 +18,12 @@ jobs:
       IMG: localhost/machine-api-provider-nico:e2e
     steps:
       - name: Checkout provider
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: fabiendupont/machine-api-provider-nvidia-infra-controller
 
       - name: Checkout NVIDIA infra-controller
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: NVIDIA/infra-controller
           ref: v2.2.0-rc.2
