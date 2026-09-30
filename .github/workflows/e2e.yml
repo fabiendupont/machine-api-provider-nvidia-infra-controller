@@ -127,6 +127,12 @@ jobs:
           docker tag $GHCR_IMG $IMG
           kind load docker-image $IMG --name nico-rest-local
 
+      - name: Set Keycloak hostname so token iss matches NICo API expected issuer
+        run: |
+          kubectl -n nico-rest set env deployment/keycloak \
+            KC_HOSTNAME_URL=http://localhost:8082
+          kubectl -n nico-rest rollout status deployment/keycloak --timeout=120s
+
       - name: Assign test-org roles to nico-api service account in Keycloak
         run: |
           # Get master realm admin token
