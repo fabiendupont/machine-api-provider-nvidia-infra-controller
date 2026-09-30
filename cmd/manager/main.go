@@ -222,6 +222,8 @@ func buildBMHNicoClient(
 	}
 	endpoint := string(secret.Data["endpoint"])
 	orgName := string(secret.Data["orgName"])
-	token := string(secret.Data["token"])
-	return machine.NewNicoAPIClient(endpoint, token), orgName, nil
+	tokenURL := string(secret.Data["tokenURL"])
+	clientID := string(secret.Data["clientId"])
+	clientSecret := string(secret.Data["clientSecret"])
+	return machine.NewNicoAPIClient(endpoint, tokenURL, clientID, clientSecret), orgName, nil
 }

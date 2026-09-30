@@ -34,7 +34,10 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	nico "github.com/NVIDIA/infra-controller/rest-api/sdk/standard"
 	v1beta1 "github.com/fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/pkg/apis/nicoprovider/v1beta1"
@@ -97,14 +100,20 @@ type NicoClientInterface interface {
 	) ([]nico.ExploredEndpoint, *http.Response, error)
 }
 
-// nicoClient wraps the SDK APIClient and injects auth context
+// nicoClient wraps the SDK APIClient and injects auth context via a
+// self-refreshing OAuth2 token source (client_credentials grant).
 type nicoClient struct {
-	client *nico.APIClient
-	token  string
+	client      *nico.APIClient
+	tokenSource oauth2.TokenSource
 }
 
 func (c *nicoClient) authCtx(ctx context.Context) context.Context {
-	return context.WithValue(ctx, nico.ContextAccessToken, c.token)
+	tok, err := c.tokenSource.Token()
+	if err != nil {
+		log.FromContext(ctx).Error(err, "failed to obtain NICo access token; API call will likely fail with 401")
+		return ctx
+	}
+	return context.WithValue(ctx, nico.ContextAccessToken, tok.AccessToken)
 }
 
 func (c *nicoClient) CreateInstance(
@@ -289,14 +298,20 @@ func NewActuator(k8sClient client.Client, eventRecorder events.EventRecorder) *A
 	}
 }
 
-// NewNicoAPIClient builds a NicoClientInterface from raw credentials.
-// Used by controllers that need a NICo client at startup (e.g. BMH sync).
-func NewNicoAPIClient(endpoint, token string) NicoClientInterface {
+// NewNicoAPIClient builds a NicoClientInterface backed by an OAuth2
+// client_credentials token source. The token source refreshes automatically
+// before expiry, so the caller does not need to manage token lifetime.
+func NewNicoAPIClient(endpoint, tokenURL, clientID, clientSecret string) NicoClientInterface {
+	ccCfg := clientcredentials.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		TokenURL:     tokenURL,
+	}
 	sdkCfg := nico.NewConfiguration()
 	sdkCfg.Servers = nico.ServerConfigurations{{URL: endpoint}}
 	return &nicoClient{
-		client: nico.NewAPIClient(sdkCfg),
-		token:  token,
+		client:      nico.NewAPIClient(sdkCfg),
+		tokenSource: oauth2.ReuseTokenSource(nil, ccCfg.TokenSource(context.Background())),
 	}
 }
 
@@ -948,21 +963,22 @@ func (a *Actuator) getNicoClient(
 	if !ok {
 		return nil, "", fmt.Errorf("secret %s is missing 'orgName' field", secretKey.Name)
 	}
-	token, ok := secret.Data["token"]
+	tokenURL, ok := secret.Data["tokenURL"]
 	if !ok {
-		return nil, "", fmt.Errorf("secret %s is missing 'token' field", secretKey.Name)
+		return nil, "", fmt.Errorf("secret %s is missing 'tokenURL' field", secretKey.Name)
+	}
+	clientID, ok := secret.Data["clientId"]
+	if !ok {
+		return nil, "", fmt.Errorf("secret %s is missing 'clientId' field", secretKey.Name)
+	}
+	clientSecret, ok := secret.Data["clientSecret"]
+	if !ok {
+		return nil, "", fmt.Errorf("secret %s is missing 'clientSecret' field", secretKey.Name)
 	}
 
-	// Create NICo API client
-	sdkCfg := nico.NewConfiguration()
-	sdkCfg.Servers = nico.ServerConfigurations{
-		{URL: string(endpoint)},
-	}
-
-	return &nicoClient{
-		client: nico.NewAPIClient(sdkCfg),
-		token:  string(token),
-	}, string(orgName), nil
+	return NewNicoAPIClient(
+		string(endpoint), string(tokenURL), string(clientID), string(clientSecret),
+	), string(orgName), nil
 }
 
 // ptr is a helper function to get a pointer to a value

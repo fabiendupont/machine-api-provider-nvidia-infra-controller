@@ -2161,8 +2161,10 @@ func TestGetNicoClient_MissingEndpoint(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: testCredsSecret, Namespace: testNamespace},
 		Data: map[string][]byte{
-			"orgName": []byte("org"),
-			"token":   []byte("tok"),
+			"orgName":      []byte("org"),
+			"tokenURL":     []byte("https://kc.test/token"),
+			"clientId":     []byte("mapni"),
+			"clientSecret": []byte("secret"),
 		},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
@@ -2188,8 +2190,10 @@ func TestGetNicoClient_MissingOrgName(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: testCredsSecret, Namespace: testNamespace},
 		Data: map[string][]byte{
-			"endpoint": []byte("https://api.test"),
-			"token":    []byte("tok"),
+			"endpoint":     []byte("https://api.test"),
+			"tokenURL":     []byte("https://kc.test/token"),
+			"clientId":     []byte("mapni"),
+			"clientSecret": []byte("secret"),
 		},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
@@ -2204,7 +2208,7 @@ func TestGetNicoClient_MissingOrgName(t *testing.T) {
 	}
 }
 
-func TestGetNicoClient_MissingToken(t *testing.T) {
+func TestGetNicoClient_MissingTokenURL(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
 	_ = machinev1beta1.AddToScheme(scheme)
@@ -2212,8 +2216,10 @@ func TestGetNicoClient_MissingToken(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: testCredsSecret, Namespace: testNamespace},
 		Data: map[string][]byte{
-			"endpoint": []byte("https://api.test"),
-			"orgName":  []byte("org"),
+			"endpoint":     []byte("https://api.test"),
+			"orgName":      []byte("org"),
+			"clientId":     []byte("mapni"),
+			"clientSecret": []byte("secret"),
 		},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
@@ -2224,7 +2230,68 @@ func TestGetNicoClient_MissingToken(t *testing.T) {
 	}
 	_, _, err := actuator.getNicoClient(context.Background(), spec)
 	if err == nil {
-		t.Fatal("Expected error for missing token")
+		t.Fatal("Expected error for missing tokenURL")
+	}
+	if !strings.Contains(err.Error(), "tokenURL") {
+		t.Errorf("Expected error about 'tokenURL', got: %v", err)
+	}
+}
+
+func TestGetNicoClient_MissingClientID(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = machinev1beta1.AddToScheme(scheme)
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: testCredsSecret, Namespace: testNamespace},
+		Data: map[string][]byte{
+			"endpoint":     []byte("https://api.test"),
+			"orgName":      []byte("org"),
+			"tokenURL":     []byte("https://kc.test/token"),
+			"clientSecret": []byte("secret"),
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
+	actuator := &Actuator{client: fakeClient}
+
+	spec := &v1beta1.NicoMachineProviderSpec{
+		CredentialsSecret: v1beta1.CredentialsSecretReference{Name: testCredsSecret, Namespace: testNamespace},
+	}
+	_, _, err := actuator.getNicoClient(context.Background(), spec)
+	if err == nil {
+		t.Fatal("Expected error for missing clientId")
+	}
+	if !strings.Contains(err.Error(), "clientId") {
+		t.Errorf("Expected error about 'clientId', got: %v", err)
+	}
+}
+
+func TestGetNicoClient_MissingClientSecret(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = machinev1beta1.AddToScheme(scheme)
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: testCredsSecret, Namespace: testNamespace},
+		Data: map[string][]byte{
+			"endpoint": []byte("https://api.test"),
+			"orgName":  []byte("org"),
+			"tokenURL": []byte("https://kc.test/token"),
+			"clientId": []byte("mapni"),
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
+	actuator := &Actuator{client: fakeClient}
+
+	spec := &v1beta1.NicoMachineProviderSpec{
+		CredentialsSecret: v1beta1.CredentialsSecretReference{Name: testCredsSecret, Namespace: testNamespace},
+	}
+	_, _, err := actuator.getNicoClient(context.Background(), spec)
+	if err == nil {
+		t.Fatal("Expected error for missing clientSecret")
+	}
+	if !strings.Contains(err.Error(), "clientSecret") {
+		t.Errorf("Expected error about 'clientSecret', got: %v", err)
 	}
 }
 
@@ -2253,9 +2320,11 @@ func TestGetNicoClient_Success(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: testCredsSecret, Namespace: testNamespace},
 		Data: map[string][]byte{
-			"endpoint": []byte("https://api.test"),
-			"orgName":  []byte("test-org"),
-			"token":    []byte("test-token"),
+			"endpoint":     []byte("https://api.test"),
+			"orgName":      []byte("test-org"),
+			"tokenURL":     []byte("https://kc.test/realms/nico/protocol/openid-connect/token"),
+			"clientId":     []byte("mapni"),
+			"clientSecret": []byte("test-secret"),
 		},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
