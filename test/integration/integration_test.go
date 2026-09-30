@@ -266,9 +266,11 @@ var _ = Describe("Machine Actuator Integration", func() {
 				Namespace: namespace.Name,
 			},
 			Data: map[string][]byte{
-				"endpoint": []byte("https://api.nico.test"),
-				"orgName":  []byte("test-org"),
-				"token":    []byte("test-token"),
+				"endpoint":     []byte("https://api.nico.test"),
+				"orgName":      []byte("test-org"),
+				"tokenURL":     []byte("https://keycloak.nico.test/realms/nico/protocol/openid-connect/token"),
+				"clientId":     []byte("mapni"),
+				"clientSecret": []byte("test-secret"),
 			},
 		}
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
