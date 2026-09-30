@@ -126,6 +126,18 @@ jobs:
           docker tag $GHCR_IMG $IMG
           kind load docker-image $IMG --name nico-rest-local
 
+      - name: Create NICo credentials secret for BMH sync
+        run: |
+          kubectl create namespace openshift-machine-api --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic nico-credentials \
+            --namespace openshift-machine-api \
+            --from-literal=endpoint=http://nico-rest-api.nico-rest.svc:8388 \
+            --from-literal=orgName=test-org \
+            --from-literal=tokenURL=http://keycloak.nico-rest.svc.cluster.local:8082/realms/nico-dev/protocol/openid-connect/token \
+            --from-literal=clientId=nico-api \
+            --from-literal=clientSecret=nico-local-secret \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy provider controller
         working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
         run: |
