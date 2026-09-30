@@ -83,6 +83,7 @@ uninstall: ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config.
 
 .PHONY: deploy
 deploy: ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+	kubectl apply -f config/manager/namespace.yaml
 	kubectl apply -f config/rbac/
 	kubectl apply -f config/manager/
 
