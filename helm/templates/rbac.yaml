@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: controller-manager
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-manager-role
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [machine.openshift.io]
+    resources: [machines]
+    verbs: [get, list, watch, update, patch]
+  - apiGroups: [machine.openshift.io]
+    resources: [machines/status]
+    verbs: [get, update, patch]
+  - apiGroups: [machine.openshift.io]
+    resources: [machines/finalizers]
+    verbs: [update]
+  - apiGroups: [machine.openshift.io]
+    resources: [machinesets]
+    verbs: [get, list, watch]
+  - apiGroups: [metal3.io]
+    resources: [baremetalhosts, hostfirmwarecomponents]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [metal3.io]
+    resources: [hostfirmwarecomponents/status]
+    verbs: [update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: controller-manager
+    namespace: {{ .Release.Namespace }}

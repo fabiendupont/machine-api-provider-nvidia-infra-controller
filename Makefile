@@ -92,6 +92,25 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 	kubectl delete -f config/manager/ --ignore-not-found=true
 	kubectl delete -f config/rbac/ --ignore-not-found=true
 
+HELM_RELEASE ?= machine-api-provider-nico
+HELM_NAMESPACE ?= machine-api-provider-nico-system
+HELM_VALUES ?= helm/values.yaml
+
+.PHONY: helm-deploy
+helm-deploy: ## Deploy via Helm chart. Override CA with HELM_CA_BUNDLE=<path-to-pem>.
+	$(if $(HELM_CA_BUNDLE),\
+		helm upgrade --install $(HELM_RELEASE) helm/ \
+			--namespace $(HELM_NAMESPACE) --create-namespace \
+			--values $(HELM_VALUES) \
+			--set-file caBundle=$(HELM_CA_BUNDLE),\
+		helm upgrade --install $(HELM_RELEASE) helm/ \
+			--namespace $(HELM_NAMESPACE) --create-namespace \
+			--values $(HELM_VALUES))
+
+.PHONY: helm-undeploy
+helm-undeploy: ## Uninstall Helm release.
+	helm uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE) --ignore-not-found
+
 ##@ OLM Bundle
 
 .PHONY: bundle-build

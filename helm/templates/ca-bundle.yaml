@@ -1,0 +1,10 @@
+{{- if .Values.caBundle }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trusted-ca-bundle
+  namespace: {{ .Release.Namespace }}
+data:
+  ca.crt: |
+{{ .Values.caBundle | indent 4 }}
+{{- end }}

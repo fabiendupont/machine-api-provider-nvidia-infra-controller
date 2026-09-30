@@ -32,6 +32,14 @@ spec:
             - --bmh-credentials-secret-namespace=openshift-machine-api
           image: ghcr.io/fabiendupont/machine-api-provider-nvidia-infra-controller:latest
           name: manager
+          env:
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/nico-root-ca.crt
+          volumeMounts:
+            - name: nico-root-ca
+              mountPath: /etc/ssl/certs/nico-root-ca.crt
+              subPath: ca.crt
+              readOnly: true
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
@@ -59,3 +67,7 @@ spec:
               memory: 64Mi
       serviceAccountName: machine-api-provider-nico-controller-manager
       terminationGracePeriodSeconds: 10
+      volumes:
+        - name: nico-root-ca
+          configMap:
+            name: nico-root-ca

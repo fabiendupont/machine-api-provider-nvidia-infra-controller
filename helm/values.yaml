@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Red Hat, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: ghcr.io/fabiendupont/machine-api-provider-nvidia-infra-controller
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# caBundle is the PEM-encoded CA certificate that signed the TLS certificates
+# of the Keycloak token endpoint and the NICo REST API endpoint.
+# Required when those endpoints use a private CA (self-signed, corporate PKI).
+#
+# On OpenShift, populate from the ingress operator CA:
+#   oc get secret router-ca -n openshift-ingress-operator \
+#     -o jsonpath='{.data.tls\.crt}' | base64 -d
+#
+# On vanilla Kubernetes, use the CA that signed your Keycloak and API server certs.
+#
+# Leave empty only if the endpoints use a publicly trusted CA (e.g. Let's Encrypt).
+caBundle: ""
+
+bmhSync:
+  enabled: true
+  # Track 1 (default): NICo owns provisioning, BMO is passive inventory.
+  # Track 2 (Ironic mode): set to false; requires ESO ExternalSecret per machine.
+  externallyProvisioned: true
+  namespace: openshift-machine-api
+  credentialsSecretName: nico-credentials
+  credentialsSecretNamespace: openshift-machine-api
+  # fmt template (%s = NICo machine ID) for per-machine BMC credential Secrets.
+  # Only used when externallyProvisioned is false.
+  bmcCredentialsSecretTemplate: "bmc-%s"
+
+webhooks:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
