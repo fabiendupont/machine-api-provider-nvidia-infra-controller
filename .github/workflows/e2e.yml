@@ -1,25 +1,32 @@
 name: E2E
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Image"]
+    types: [completed]
     branches: [main]
-  pull_request:
 
 jobs:
   e2e:
     name: E2E Tests
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
     env:
       KUBECONFIG: /tmp/carbide-e2e-kubeconfig
       NVIDIA_CARBIDE_API_ENDPOINT: http://localhost:8388
       NVIDIA_CARBIDE_KEYCLOAK_URL: http://localhost:8082
       NVIDIA_CARBIDE_API_ENDPOINT_INTERNAL: http://nico-rest-api.nico-rest.svc:8388
       IMG: localhost/machine-api-provider-nico:e2e
+      GHCR_IMG: ghcr.io/${{ github.repository }}:sha-${{ github.event.workflow_run.head_sha }}
     steps:
       - name: Checkout provider
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           path: fabiendupont/machine-api-provider-nvidia-infra-controller
 
       - name: Checkout NVIDIA infra-controller
@@ -82,10 +89,17 @@ jobs:
         run: kubectl apply -f config/crd/external/
         working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
 
-      - name: Build and load provider image
-        working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and load provider image
         run: |
-          make docker-build IMG=$IMG
+          docker pull $GHCR_IMG
+          docker tag $GHCR_IMG $IMG
           kind load docker-image $IMG --name nico-rest-local
 
       - name: Deploy provider controller
