@@ -10,16 +10,16 @@ WORKDIR /workspace
 COPY NVIDIA/infra-controller/rest-api/sdk/standard/ NVIDIA/infra-controller/rest-api/sdk/standard/
 
 # Copy the Go Modules manifests
-COPY fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/go.mod fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/go.mod
-COPY fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/go.sum fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/go.sum
+COPY fabiendupont/machine-api-provider-nvidia-infra-controller/go.mod fabiendupont/machine-api-provider-nvidia-infra-controller/go.mod
+COPY fabiendupont/machine-api-provider-nvidia-infra-controller/go.sum fabiendupont/machine-api-provider-nvidia-infra-controller/go.sum
 
-WORKDIR /workspace/fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+WORKDIR /workspace/fabiendupont/machine-api-provider-nvidia-infra-controller
 
 RUN go mod download
 
 # Copy the go source
-COPY fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/cmd/ cmd/
-COPY fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/pkg/ pkg/
+COPY fabiendupont/machine-api-provider-nvidia-infra-controller/cmd/ cmd/
+COPY fabiendupont/machine-api-provider-nvidia-infra-controller/pkg/ pkg/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager cmd/manager/main.go
@@ -28,7 +28,7 @@ FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
 
-COPY --from=builder /workspace/fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/manager .
+COPY --from=builder /workspace/fabiendupont/machine-api-provider-nvidia-infra-controller/manager .
 
 USER 65532:65532
 
