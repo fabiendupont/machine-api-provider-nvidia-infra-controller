@@ -25,7 +25,12 @@ spec:
       containers:
         - command:
             - /manager
-          image: ghcr.io/fabiendupont/machine-api-provider-nico:latest
+            - --enable-bmh-sync=true
+            - --bmh-externally-provisioned=true
+            - --bmh-namespace=openshift-machine-api
+            - --bmh-credentials-secret-name=nico-credentials
+            - --bmh-credentials-secret-namespace=openshift-machine-api
+          image: ghcr.io/fabiendupont/machine-api-provider-nvidia-infra-controller:latest
           name: manager
           securityContext:
             readOnlyRootFilesystem: true
