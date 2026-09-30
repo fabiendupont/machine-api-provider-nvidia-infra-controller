@@ -20,7 +20,7 @@ jobs:
       - name: Checkout provider
         uses: actions/checkout@v4
         with:
-          path: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+          path: fabiendupont/machine-api-provider-nvidia-infra-controller
 
       - name: Checkout NVIDIA infra-controller
         uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/go.mod
+          go-version-file: fabiendupont/machine-api-provider-nvidia-infra-controller/go.mod
 
       - name: Increase inotify limits
         run: sudo sysctl -w fs.inotify.max_user_instances=512
@@ -80,16 +80,16 @@ jobs:
 
       - name: Install Machine API CRDs
         run: kubectl apply -f config/crd/external/
-        working-directory: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+        working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
 
       - name: Build and load provider image
-        working-directory: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+        working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
         run: |
           make docker-build IMG=$IMG
           kind load docker-image $IMG --name nico-rest-local
 
       - name: Deploy provider controller
-        working-directory: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+        working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
         run: |
           kubectl apply -f config/manager/namespace.yaml
           kubectl apply -f config/rbac/
@@ -101,7 +101,7 @@ jobs:
 
       - name: Run e2e tests
         run: make test-e2e-live
-        working-directory: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+        working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
 
       - name: Dump controller logs on failure
         if: failure()

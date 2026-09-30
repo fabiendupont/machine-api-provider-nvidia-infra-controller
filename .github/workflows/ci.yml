@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          path: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+          path: fabiendupont/machine-api-provider-nvidia-infra-controller
 
       - name: Checkout NVIDIA infra-controller
         uses: actions/checkout@v4
@@ -24,13 +24,13 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/go.mod
+          go-version-file: fabiendupont/machine-api-provider-nvidia-infra-controller/go.mod
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
           version: latest
-          working-directory: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+          working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
 
   build:
     name: Build
@@ -39,7 +39,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          path: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+          path: fabiendupont/machine-api-provider-nvidia-infra-controller
 
       - name: Checkout NVIDIA infra-controller
         uses: actions/checkout@v4
@@ -50,11 +50,11 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/go.mod
+          go-version-file: fabiendupont/machine-api-provider-nvidia-infra-controller/go.mod
 
       - name: Build
         run: go build ./...
-        working-directory: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+        working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
 
   test:
     name: Test
@@ -63,7 +63,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          path: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+          path: fabiendupont/machine-api-provider-nvidia-infra-controller
 
       - name: Checkout NVIDIA infra-controller
         uses: actions/checkout@v4
@@ -74,13 +74,13 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/go.mod
+          go-version-file: fabiendupont/machine-api-provider-nvidia-infra-controller/go.mod
 
       - name: Setup envtest
         run: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
       - name: Run tests
-        working-directory: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller
+        working-directory: fabiendupont/machine-api-provider-nvidia-infra-controller
         run: |
           KUBEBUILDER_ASSETS="$(setup-envtest use --bin-dir /tmp/envtest -p path)" \
             go test ./... -coverprofile=cover.out
@@ -88,4 +88,4 @@ jobs:
       - name: Upload coverage
         uses: codecov/codecov-action@v7
         with:
-          files: fabiendupont/machine-api-provider-nvidia-ncx-infra-controller/cover.out
+          files: fabiendupont/machine-api-provider-nvidia-infra-controller/cover.out
