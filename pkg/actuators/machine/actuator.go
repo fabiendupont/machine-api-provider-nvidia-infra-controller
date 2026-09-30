@@ -28,14 +28,14 @@ import (
 
 	"github.com/google/uuid"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/clientcredentials"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
