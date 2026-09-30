@@ -127,44 +127,6 @@ jobs:
           docker tag $GHCR_IMG $IMG
           kind load docker-image $IMG --name nico-rest-local
 
-      - name: Set Keycloak hostname so token iss matches NICo API expected issuer
-        run: |
-          kubectl -n nico-rest set env deployment/keycloak \
-            KC_HOSTNAME_URL=http://localhost:8082
-          kubectl -n nico-rest rollout status deployment/keycloak --timeout=120s
-
-      - name: Assign test-org roles to nico-api service account in Keycloak
-        run: |
-          # Get master realm admin token
-          ADMIN_TOKEN=$(curl -sf http://localhost:8082/realms/master/protocol/openid-connect/token \
-            -d "grant_type=password&client_id=admin-cli&username=admin&password=admin" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-
-          # Get service account user ID for nico-api client
-          CLIENT_UUID=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" \
-            "http://localhost:8082/admin/realms/nico-dev/clients?clientId=nico-api" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
-          SA_USER_ID=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" \
-            "http://localhost:8082/admin/realms/nico-dev/clients/$CLIENT_UUID/service-account-user" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-
-          # Get role representations for test-org:TENANT_ADMIN and test-org:PROVIDER_ADMIN
-          ROLES=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" \
-            "http://localhost:8082/admin/realms/nico-dev/roles" \
-            | python3 -c "
-          import sys, json
-          roles = json.load(sys.stdin)
-          wanted = {'test-org:TENANT_ADMIN', 'test-org:PROVIDER_ADMIN'}
-          print(json.dumps([r for r in roles if r['name'] in wanted]))
-          ")
-
-          # Assign roles to service account
-          curl -sf -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "$ROLES" \
-            "http://localhost:8082/admin/realms/nico-dev/users/$SA_USER_ID/role-mappings/realm"
-          echo "Assigned test-org roles to nico-api service account"
-
       - name: Create NICo credentials secret for BMH sync
         run: |
           kubectl create namespace openshift-machine-api --dry-run=client -o yaml | kubectl apply -f -

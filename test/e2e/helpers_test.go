@@ -80,7 +80,10 @@ func getKeycloakToken() string {
 }
 
 // createCredentialsSecret creates a Kubernetes secret with NICo API credentials.
-func createCredentialsSecret(ctx context.Context, k8sClient client.Client, name, namespace string) *corev1.Secret {
+// Uses a static bearer token obtained via the password grant so the token's iss
+// matches what the NICo API expects (based on externalBaseURL), regardless of
+// which URL the controller uses to reach Keycloak internally.
+func createCredentialsSecret(ctx context.Context, k8sClient client.Client, name, namespace, token string) *corev1.Secret {
 	// Use the in-cluster endpoint if available (for controllers running inside the cluster),
 	// otherwise fall back to the external endpoint.
 	endpoint := os.Getenv("NVIDIA_CARBIDE_API_ENDPOINT_INTERNAL")
@@ -89,24 +92,15 @@ func createCredentialsSecret(ctx context.Context, k8sClient client.Client, name,
 	}
 	Expect(endpoint).NotTo(BeEmpty(), "NVIDIA_CARBIDE_API_ENDPOINT or NVIDIA_CARBIDE_API_ENDPOINT_INTERNAL must be set")
 
-	keycloakURL := os.Getenv("NVIDIA_CARBIDE_KEYCLOAK_URL_INTERNAL")
-	if keycloakURL == "" {
-		keycloakURL = os.Getenv("NVIDIA_CARBIDE_KEYCLOAK_URL")
-	}
-	Expect(keycloakURL).NotTo(BeEmpty(), "NVIDIA_CARBIDE_KEYCLOAK_URL or NVIDIA_CARBIDE_KEYCLOAK_URL_INTERNAL must be set")
-	tokenURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/token", keycloakURL, keycloakRealm)
-
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 		Data: map[string][]byte{
-			"endpoint":     []byte(endpoint),
-			"orgName":      []byte("test-org"),
-			"tokenURL":     []byte(tokenURL),
-			"clientId":     []byte(keycloakClientID),
-			"clientSecret": []byte(keycloakClientSecret),
+			"endpoint": []byte(endpoint),
+			"orgName":  []byte("test-org"),
+			"token":    []byte(token),
 		},
 	}
 	Expect(k8sClient.Create(ctx, secret)).To(Succeed())

@@ -315,6 +315,19 @@ func NewNicoAPIClient(endpoint, tokenURL, clientID, clientSecret string) NicoCli
 	}
 }
 
+// NewNicoAPIClientWithStaticToken builds a NicoClientInterface backed by a
+// static bearer token. The token is not refreshed; use this only for
+// short-lived contexts such as E2E tests where the token lifetime covers the
+// test duration.
+func NewNicoAPIClientWithStaticToken(endpoint, token string) NicoClientInterface {
+	sdkCfg := nico.NewConfiguration()
+	sdkCfg.Servers = nico.ServerConfigurations{{URL: endpoint}}
+	return &nicoClient{
+		client:      nico.NewAPIClient(sdkCfg),
+		tokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token}),
+	}
+}
+
 // NewActuatorWithClient creates a new machine actuator with injected client (for testing)
 func NewActuatorWithClient(
 	k8sClient client.Client, eventRecorder events.EventRecorder,
@@ -954,7 +967,6 @@ func (a *Actuator) getNicoClient(
 		return nil, "", fmt.Errorf("failed to get credentials secret: %w", err)
 	}
 
-	// Validate secret contains required fields
 	endpoint, ok := secret.Data["endpoint"]
 	if !ok {
 		return nil, "", fmt.Errorf("secret %s is missing 'endpoint' field", secretKey.Name)
@@ -963,9 +975,18 @@ func (a *Actuator) getNicoClient(
 	if !ok {
 		return nil, "", fmt.Errorf("secret %s is missing 'orgName' field", secretKey.Name)
 	}
+
+	// Static bearer token takes precedence over OAuth2 client credentials.
+	// Useful for short-lived contexts (e.g. E2E tests) where a user token with
+	// org membership is available and client_credentials would require issuer
+	// alignment between the in-cluster token URL and the NICo API's externalBaseURL.
+	if token, hasToken := secret.Data["token"]; hasToken && len(token) > 0 {
+		return NewNicoAPIClientWithStaticToken(string(endpoint), string(token)), string(orgName), nil
+	}
+
 	tokenURL, ok := secret.Data["tokenURL"]
 	if !ok {
-		return nil, "", fmt.Errorf("secret %s is missing 'tokenURL' field", secretKey.Name)
+		return nil, "", fmt.Errorf("secret %s is missing 'tokenURL' field (and no 'token' field present)", secretKey.Name)
 	}
 	clientID, ok := secret.Data["clientId"]
 	if !ok {

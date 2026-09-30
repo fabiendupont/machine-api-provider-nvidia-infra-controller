@@ -96,7 +96,7 @@ var _ = Describe("Live Machine API Provider E2E", Label("live"), func() {
 			siteID, tenantID, vpcID, subnetID, machineID := setupInfrastructureViaAPI(token, testOrgName, machineName)
 
 			By("Creating credentials secret")
-			secret := createCredentialsSecret(ctx, k8sClient, fmt.Sprintf("%s-creds", machineName), testNamespace)
+			secret := createCredentialsSecret(ctx, k8sClient, fmt.Sprintf("%s-creds", machineName), testNamespace, token)
 
 			By("Building provider spec")
 			providerSpec := &v1beta1.NicoMachineProviderSpec{
