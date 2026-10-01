@@ -36,6 +36,11 @@ spec:
             - --bmh-credentials-secret-name={{ .Values.bmhSync.credentialsSecretName }}
             - --bmh-credentials-secret-namespace={{ .Values.bmhSync.credentialsSecretNamespace }}
             - --bmh-bmc-credentials-secret-template={{ .Values.bmhSync.bmcCredentialsSecretTemplate }}
+            {{- if and .Values.bmhSync.eso.clusterSecretStoreName .Values.bmhSync.eso.vaultSecretPath }}
+            - --bmh-eso-cluster-secret-store={{ .Values.bmhSync.eso.clusterSecretStoreName }}
+            - --bmh-eso-vault-secret-path={{ .Values.bmhSync.eso.vaultSecretPath }}
+            - --bmh-eso-refresh-interval={{ .Values.bmhSync.eso.refreshInterval }}
+            {{- end }}
           {{- if .Values.caBundle }}
           env:
             - name: SSL_CERT_FILE

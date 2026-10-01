@@ -45,6 +45,7 @@ type Reconciler struct {
 	OrgName    string
 	Namespace  string
 	Config     BMHSyncConfig
+	ESOConfig  ESOSyncConfig
 
 	skuCache       map[string]*nico.Sku
 	skuCacheExpiry time.Time
@@ -81,6 +82,12 @@ func (r *Reconciler) syncMachine(
 		existing.Annotations = desired.Annotations
 		if updateErr := r.Update(ctx, existing); updateErr != nil {
 			return fmt.Errorf("update BMH: %w", updateErr)
+		}
+	}
+
+	if !r.Config.ExternallyProvisioned {
+		if err := r.syncExternalSecret(ctx, machineID); err != nil {
+			return fmt.Errorf("sync ExternalSecret: %w", err)
 		}
 	}
 
@@ -194,6 +201,7 @@ func SetupWithManager(
 	nicoClient machine.NicoClientInterface,
 	orgName, namespace string,
 	cfg BMHSyncConfig,
+	esoCfg ESOSyncConfig,
 ) error {
 	r := &Reconciler{
 		Client:     mgr.GetClient(),
@@ -201,6 +209,7 @@ func SetupWithManager(
 		OrgName:    orgName,
 		Namespace:  namespace,
 		Config:     cfg,
+		ESOConfig:  esoCfg,
 	}
 
 	return mgr.Add(r)

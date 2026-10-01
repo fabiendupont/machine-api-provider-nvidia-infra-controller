@@ -23,13 +23,26 @@ bmhSync:
   enabled: true
   # Track 1 (default): NICo owns provisioning, BMO is passive inventory.
   # Track 2 (Ironic mode): set to false; requires ESO ExternalSecret per machine.
-  externallyProvisioned: true
+  externallyProvisioned: false
   namespace: openshift-machine-api
   credentialsSecretName: nico-credentials
   credentialsSecretNamespace: openshift-machine-api
   # fmt template (%s = NICo machine ID) for per-machine BMC credential Secrets.
   # Only used when externallyProvisioned is false.
   bmcCredentialsSecretTemplate: "bmc-%s"
+
+  # ESO integration: when both fields are set, MAPNI creates an ExternalSecret
+  # per machine alongside each BareMetalHost (only when externallyProvisioned: false).
+  # The ExternalSecret pulls username/password from Vault and delivers them as the
+  # bmc-<machineID> Secret that BMO/Ironic uses to authenticate to vbmc-rs Redfish.
+  eso:
+    # Name of the ESO ClusterSecretStore that can read from Vault
+    # (created by the infra-site chart as "vault-backend").
+    clusterSecretStoreName: ""
+    # Vault KV path holding BMC credentials (e.g. secrets/bmc/default).
+    vaultSecretPath: ""
+    # How often ESO re-reads the secret from Vault. Default: 1h.
+    refreshInterval: "1h"
 
 webhooks:
   enabled: false

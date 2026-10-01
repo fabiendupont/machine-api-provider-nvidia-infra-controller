@@ -20,7 +20,9 @@ import (
 	"context"
 	"flag"
 	"os"
+	"time"
 
+	esov1beta1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1beta1"
 	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -51,6 +53,7 @@ func init() {
 	_ = machinev1beta1.AddToScheme(scheme)
 	_ = nicov1beta1.AddToScheme(scheme)
 	_ = metal3.AddToScheme(scheme)
+	_ = esov1beta1.AddToScheme(scheme)
 }
 
 func main() {
@@ -66,6 +69,9 @@ func main() {
 	var bmhNamespace string
 	var bmhExternallyProvisioned bool
 	var bmhBMCCredentialsSecretTemplate string
+	var bmhESOClusterSecretStore string
+	var bmhESOVaultSecretPath string
+	var bmhESORefreshInterval time.Duration
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080",
 		"The address the metric endpoint binds to.")
@@ -98,6 +104,15 @@ func main() {
 	flag.StringVar(&bmhBMCCredentialsSecretTemplate, "bmh-bmc-credentials-secret-template", "bmc-%s",
 		"fmt template (one %%s = machine ID) for the per-machine BMC credentials Secret name. "+
 			"Only used when --bmh-externally-provisioned=false.")
+	flag.StringVar(&bmhESOClusterSecretStore, "bmh-eso-cluster-secret-store", "",
+		"Name of the ESO ClusterSecretStore used to pull BMC credentials from Vault. "+
+			"When set together with --bmh-eso-vault-secret-path, MAPNI creates an ExternalSecret "+
+			"for each machine alongside the BareMetalHost. Only used when --bmh-externally-provisioned=false.")
+	flag.StringVar(&bmhESOVaultSecretPath, "bmh-eso-vault-secret-path", "",
+		"Vault KV path for BMC credentials (e.g. secrets/bmc/default). "+
+			"Only used when --bmh-eso-cluster-secret-store is also set.")
+	flag.DurationVar(&bmhESORefreshInterval, "bmh-eso-refresh-interval", time.Hour,
+		"How often ESO refreshes the BMC credential Secret from Vault.")
 
 	opts := zap.Options{
 		Development: false,
@@ -182,7 +197,12 @@ func main() {
 			ExternallyProvisioned:        bmhExternallyProvisioned,
 			BMCCredentialsSecretTemplate: bmhBMCCredentialsSecretTemplate,
 		}
-		if err := bmhcontroller.SetupWithManager(mgr, nicoClient, orgName, bmhNamespace, bmhCfg); err != nil {
+		esoCfg := bmhcontroller.ESOSyncConfig{
+			ClusterSecretStoreName: bmhESOClusterSecretStore,
+			VaultSecretPath:        bmhESOVaultSecretPath,
+			RefreshInterval:        bmhESORefreshInterval,
+		}
+		if err := bmhcontroller.SetupWithManager(mgr, nicoClient, orgName, bmhNamespace, bmhCfg, esoCfg); err != nil {
 			setupLog.Error(err, "unable to set up BMH sync controller")
 			os.Exit(1)
 		}

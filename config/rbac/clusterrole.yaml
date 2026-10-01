@@ -30,3 +30,6 @@ rules:
   - apiGroups: [metal3.io]
     resources: [hostfirmwarecomponents/status]
     verbs: [update, patch]
+  - apiGroups: [external-secrets.io]
+    resources: [externalsecrets]
+    verbs: [get, list, watch, create, update, patch]
