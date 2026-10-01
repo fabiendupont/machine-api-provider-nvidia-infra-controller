@@ -7,7 +7,7 @@ require (
 	github.com/external-secrets/external-secrets/apis v0.0.0-20261001125351-8c8864ba7313
 	github.com/google/uuid v1.6.0
 	github.com/metal3-io/baremetal-operator/apis v0.14.0
-	github.com/onsi/ginkgo/v2 v2.32.2
+	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.43.0
 	github.com/openshift/api v0.0.0-20260827203510-c7d4aa14a764
 	github.com/prometheus/client_golang v1.24.1
