@@ -20,7 +20,6 @@ jobs:
       NVIDIA_CARBIDE_KEYCLOAK_URL: http://localhost:8082
       NVIDIA_CARBIDE_API_ENDPOINT_INTERNAL: http://nico-rest-api.nico-rest.svc:8388
       NVIDIA_CARBIDE_KEYCLOAK_URL_INTERNAL: http://keycloak.nico-rest.svc.cluster.local:8082
-      IMG: localhost/machine-api-provider-nico:e2e
       GHCR_IMG: ghcr.io/${{ github.repository }}:sha-${{ github.event.workflow_run.head_sha }}
     steps:
       - name: Checkout provider
@@ -124,8 +123,7 @@ jobs:
       - name: Pull and load provider image
         run: |
           docker pull $GHCR_IMG
-          docker tag $GHCR_IMG $IMG
-          kind load docker-image $IMG --name nico-rest-local
+          kind load docker-image $GHCR_IMG --name nico-rest-local
 
       - name: Create NICo credentials secret for BMH sync
         run: |
@@ -144,9 +142,12 @@ jobs:
         run: |
           kubectl apply -f config/manager/namespace.yaml
           kubectl apply -f config/rbac/
-          sed -i "s|ghcr.io/fabiendupont/machine-api-provider-nvidia-infra-controller:latest|$IMG|" \
+          sed -i "s|ghcr.io/fabiendupont/machine-api-provider-nvidia-infra-controller:latest|$GHCR_IMG|" \
             config/manager/deployment.yaml
           kubectl apply -f config/manager/
+          kubectl patch deployment controller-manager \
+            -n machine-api-provider-nico-system \
+            -p '{"spec":{"template":{"spec":{"containers":[{"name":"manager","imagePullPolicy":"Never"}]}}}}'
           kubectl wait --for=condition=Available deployment/controller-manager \
             -n machine-api-provider-nico-system --timeout=5m
 
