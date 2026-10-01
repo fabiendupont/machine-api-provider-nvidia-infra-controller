@@ -147,7 +147,7 @@ jobs:
           kubectl apply -f config/manager/
           kubectl patch deployment controller-manager \
             -n machine-api-provider-nico-system \
-            -p '{"spec":{"template":{"spec":{"containers":[{"name":"manager","imagePullPolicy":"Never"}]}}}}'
+            -p '{"spec":{"template":{"spec":{"securityContext":{"seccompProfile":null},"containers":[{"name":"manager","imagePullPolicy":"Never","securityContext":{"readOnlyRootFilesystem":null,"seccompProfile":null}}]}}}}'
           kubectl wait --for=condition=Available deployment/controller-manager \
             -n machine-api-provider-nico-system --timeout=5m
 
@@ -158,9 +158,12 @@ jobs:
       - name: Dump controller logs on failure
         if: failure()
         run: |
+          echo "=== Controller pod description ==="
+          kubectl describe pod -l control-plane=controller-manager \
+            -n machine-api-provider-nico-system || true
           echo "=== Controller logs ==="
           kubectl logs -l control-plane=controller-manager \
-            -n machine-api-provider-nico-system --tail=200
+            -n machine-api-provider-nico-system --tail=200 || true
           echo "=== Machine objects ==="
           kubectl get machines.machine.openshift.io -A -o yaml || true
 
