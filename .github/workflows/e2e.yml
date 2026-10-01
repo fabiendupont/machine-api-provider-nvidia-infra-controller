@@ -144,7 +144,7 @@ jobs:
         run: |
           kubectl apply -f config/manager/namespace.yaml
           kubectl apply -f config/rbac/
-          sed -i "s|ghcr.io/fabiendupont/machine-api-provider-nico:latest|$IMG|" \
+          sed -i "s|ghcr.io/fabiendupont/machine-api-provider-nvidia-infra-controller:latest|$IMG|" \
             config/manager/deployment.yaml
           kubectl apply -f config/manager/
           kubectl wait --for=condition=Available deployment/controller-manager \
