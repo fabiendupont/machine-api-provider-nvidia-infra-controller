@@ -12,6 +12,7 @@ import (
 
 const (
 	hardwareDetailsAnnotation = "inspect.metal3.io/hardwaredetails"
+	inspectionAnnotation      = "inspect.metal3.io"
 	nicoMachineIDLabel        = "infra.nvidia.com/machine-id"
 	nicoSiteIDLabel           = "infra.nvidia.com/site-id"
 )
@@ -121,6 +122,12 @@ func MachineToBaremetalHost(
 			bmh.Annotations = map[string]string{}
 		}
 		bmh.Annotations[hardwareDetailsAnnotation] = string(hwJSON)
+		// BMO requires inspection to be disabled when hardware details are
+		// provided externally AND the host is not externallyProvisioned —
+		// otherwise the admission webhook rejects the BMH.
+		if !cfg.ExternallyProvisioned {
+			bmh.Annotations[inspectionAnnotation] = "disabled"
+		}
 	}
 
 	return bmh
