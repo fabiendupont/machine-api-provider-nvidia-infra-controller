@@ -79,8 +79,10 @@ func (r *Reconciler) syncMachine(
 	// Use Server-Side Apply so MAPNI only manages the fields it sets.
 	// Fields absent from desired (spec.image, spec.userData, spec.automatedCleaningMode)
 	// are owned by other field managers and are never touched by this apply.
+	// client.Apply is deprecated in favour of client.Client.Apply() which requires
+	// generated applyconfiguration types; Metal3 has none, so we stay on Patch.
 	desired.ManagedFields = nil
-	if applyErr := r.Patch(ctx, desired, client.Apply,
+	if applyErr := r.Patch(ctx, desired, client.Apply, //nolint:staticcheck
 		client.FieldOwner("mapni-controller"),
 		client.ForceOwnership,
 	); applyErr != nil {
