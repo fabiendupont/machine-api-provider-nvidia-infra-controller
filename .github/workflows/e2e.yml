@@ -46,7 +46,7 @@ jobs:
 
       - name: Restore NICo image cache
         id: nico-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /tmp/nico-images.tar
           key: nico-images-v2.2.0-rc.2
