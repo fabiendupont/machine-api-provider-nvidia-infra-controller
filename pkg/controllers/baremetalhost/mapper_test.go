@@ -92,7 +92,7 @@ func TestMachineToBaremetalHost_BMCIronicMode(t *testing.T) {
 	// No bootMAC from Site Explorer — should fall back to first NIC
 	bmh := MachineToBaremetalHost(m, nil, "", "test-ns", ironicCfg)
 
-	if bmh.Spec.BMC.Address != "redfish+https://10.0.0.100/redfish/v1/Systems/1" {
+	if bmh.Spec.BMC.Address != "redfish-virtualmedia+https://10.0.0.100/redfish/v1/Systems/1" {
 		t.Errorf("BMC address = %s", bmh.Spec.BMC.Address)
 	}
 	// ExternallyProvisioned=false: per-machine secret name derived from template.
