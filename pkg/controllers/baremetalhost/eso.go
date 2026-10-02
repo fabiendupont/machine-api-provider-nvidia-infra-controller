@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	esov1beta1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1beta1"
+	esov1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,7 +41,7 @@ func (r *Reconciler) syncExternalSecret(ctx context.Context, machineID string) e
 
 	desired := machineToExternalSecret(machineID, r.Namespace, r.Config, r.ESOConfig)
 
-	existing := &esov1beta1.ExternalSecret{}
+	existing := &esov1.ExternalSecret{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if errors.IsNotFound(err) {
 		return r.Create(ctx, desired)
@@ -58,7 +58,7 @@ func machineToExternalSecret(
 	namespace string,
 	cfg BMHSyncConfig,
 	eso ESOSyncConfig,
-) *esov1beta1.ExternalSecret {
+) *esov1.ExternalSecret {
 	secretName := fmt.Sprintf(cfg.BMCCredentialsSecretTemplate, machineID)
 
 	refresh := eso.RefreshInterval
@@ -66,7 +66,7 @@ func machineToExternalSecret(
 		refresh = time.Hour
 	}
 
-	return &esov1beta1.ExternalSecret{
+	return &esov1.ExternalSecret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: namespace,
@@ -74,27 +74,27 @@ func machineToExternalSecret(
 				nicoMachineIDLabel: machineID,
 			},
 		},
-		Spec: esov1beta1.ExternalSecretSpec{
+		Spec: esov1.ExternalSecretSpec{
 			RefreshInterval: &metav1.Duration{Duration: refresh},
-			SecretStoreRef: esov1beta1.SecretStoreRef{
+			SecretStoreRef: esov1.SecretStoreRef{
 				Name: eso.ClusterSecretStoreName,
 				Kind: "ClusterSecretStore",
 			},
-			Target: esov1beta1.ExternalSecretTarget{
+			Target: esov1.ExternalSecretTarget{
 				Name:           secretName,
-				CreationPolicy: esov1beta1.CreatePolicyOwner,
+				CreationPolicy: esov1.CreatePolicyOwner,
 			},
-			Data: []esov1beta1.ExternalSecretData{
+			Data: []esov1.ExternalSecretData{
 				{
 					SecretKey: "username",
-					RemoteRef: esov1beta1.ExternalSecretDataRemoteRef{
+					RemoteRef: esov1.ExternalSecretDataRemoteRef{
 						Key:      eso.VaultSecretPath,
 						Property: "username",
 					},
 				},
 				{
 					SecretKey: "password",
-					RemoteRef: esov1beta1.ExternalSecretDataRemoteRef{
+					RemoteRef: esov1.ExternalSecretDataRemoteRef{
 						Key:      eso.VaultSecretPath,
 						Property: "password",
 					},

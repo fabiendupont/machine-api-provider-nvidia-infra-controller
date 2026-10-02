@@ -22,7 +22,7 @@ import (
 	"os"
 	"time"
 
-	esov1beta1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1beta1"
+	esov1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1"
 	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -53,7 +53,7 @@ func init() {
 	_ = machinev1beta1.AddToScheme(scheme)
 	_ = nicov1beta1.AddToScheme(scheme)
 	_ = metal3.AddToScheme(scheme)
-	_ = esov1beta1.AddToScheme(scheme)
+	_ = esov1.AddToScheme(scheme)
 }
 
 func main() {
