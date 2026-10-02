@@ -94,8 +94,18 @@ func MachineToBaremetalHost(
 
 	if m.Metadata != nil {
 		if m.Metadata.BmcInfo != nil && m.Metadata.BmcInfo.Ip.Get() != nil {
+			// Track 1 (externallyProvisioned): redfish+https — BMO only does hardware
+			// inventory, no OS deployment, provisioning network not required.
+			// Track 2 (Ironic mode): redfish-virtualmedia+https — Ironic inserts IPA
+			// ISO via Redfish VirtualMedia and boots it; no provisioning network needed
+			// since NICo already handled discovery via PXE before the machine reached
+			// Ready and MAPNI created this BMH.
+			scheme := "redfish+https"
+			if !cfg.ExternallyProvisioned {
+				scheme = "redfish-virtualmedia+https"
+			}
 			bmc := metal3.BMCDetails{
-				Address: fmt.Sprintf("redfish+https://%s/redfish/v1/Systems/1", *m.Metadata.BmcInfo.Ip.Get()),
+				Address: fmt.Sprintf("%s://%s/redfish/v1/Systems/1", scheme, *m.Metadata.BmcInfo.Ip.Get()),
 			}
 			if !cfg.ExternallyProvisioned && cfg.BMCCredentialsSecretTemplate != "" {
 				bmc.CredentialsName = fmt.Sprintf(cfg.BMCCredentialsSecretTemplate, derefStr(m.Id))
