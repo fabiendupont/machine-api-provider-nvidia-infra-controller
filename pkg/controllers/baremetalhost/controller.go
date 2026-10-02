@@ -61,9 +61,17 @@ func (r *Reconciler) syncMachine(
 	machineID := derefStr(m.Id)
 	sku := skuMap[machineID]
 
+	// Resolve boot MAC: prefer machineId-keyed lookup (when NICo populates it),
+	// fall back to BMC IP keyed lookup (endpoint.address always present).
 	var bootMAC string
 	if seData != nil {
-		bootMAC = seData.BootMACs[machineID]
+		if mac, ok := seData.BootMACs[machineID]; ok {
+			bootMAC = mac
+		} else if m.Metadata != nil && m.Metadata.BmcInfo != nil {
+			if ip := m.Metadata.BmcInfo.Ip.Get(); ip != nil {
+				bootMAC = seData.BootMACsByBMCIP[*ip]
+			}
+		}
 	}
 
 	desired := MachineToBaremetalHost(m, sku, bootMAC, r.Namespace, r.Config)
@@ -156,6 +164,7 @@ func (r *Reconciler) getSkuMap(ctx context.Context) map[string]*nico.Sku {
 type siteExplorerData struct {
 	FirmwareVersions map[string]map[string]string // machineID → component → version
 	BootMACs         map[string]string            // machineID → boot MAC address
+	BootMACsByBMCIP  map[string]string            // bmcIP → boot MAC address (fallback when machineID is null)
 }
 
 func (r *Reconciler) getSiteExplorerData(ctx context.Context) *siteExplorerData {
@@ -167,28 +176,42 @@ func (r *Reconciler) getSiteExplorerData(ctx context.Context) *siteExplorerData 
 	data := &siteExplorerData{
 		FirmwareVersions: make(map[string]map[string]string),
 		BootMACs:         make(map[string]string),
+		BootMACsByBMCIP:  make(map[string]string),
 	}
 	for _, ep := range endpoints {
 		if ep.Report == nil {
 			continue
 		}
+
+		// Extract boot MAC from machineSetupStatus.evaluatedBootInterface.
+		// Prefer the full pair (MAC + Redfish interface ID); fall back to macOnly.
+		var bootMAC string
+		if setup := ep.Report.MachineSetupStatus; setup != nil {
+			if bi := setup.EvaluatedBootInterface; bi != nil {
+				if bi.Pair != nil && bi.Pair.MacAddress != "" {
+					bootMAC = bi.Pair.MacAddress
+				} else if mac := bi.GetMacOnly(); mac != "" {
+					bootMAC = mac
+				}
+			}
+		}
+
+		// Always index by BMC IP (endpoint.address) so callers can look up by
+		// BMC IP when machineId is null (NICo does not always populate it).
+		if ep.Address != "" && bootMAC != "" {
+			data.BootMACsByBMCIP[ep.Address] = bootMAC
+		}
+
+		// Also index by machineId when present.
 		mid := ep.Report.MachineId.Get()
 		if mid == nil || *mid == "" {
 			continue
 		}
+		if bootMAC != "" {
+			data.BootMACs[*mid] = bootMAC
+		}
 		if len(ep.Report.FirmwareVersions) > 0 {
 			data.FirmwareVersions[*mid] = ep.Report.FirmwareVersions
-		}
-		// Extract boot MAC from machineSetupStatus.evaluatedBootInterface.
-		// Prefer the full pair (MAC + Redfish interface ID); fall back to macOnly.
-		if setup := ep.Report.MachineSetupStatus; setup != nil {
-			if bi := setup.EvaluatedBootInterface; bi != nil {
-				if bi.Pair != nil && bi.Pair.MacAddress != "" {
-					data.BootMACs[*mid] = bi.Pair.MacAddress
-				} else if mac := bi.GetMacOnly(); mac != "" {
-					data.BootMACs[*mid] = mac
-				}
-			}
 		}
 	}
 	return data
