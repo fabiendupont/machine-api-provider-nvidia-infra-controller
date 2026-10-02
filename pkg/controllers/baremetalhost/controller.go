@@ -76,32 +76,15 @@ func (r *Reconciler) syncMachine(
 
 	desired := MachineToBaremetalHost(m, sku, bootMAC, r.Namespace, r.Config)
 
-	existing := &metal3.BareMetalHost{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
-	if errors.IsNotFound(err) {
-		if createErr := r.Create(ctx, desired); createErr != nil {
-			return fmt.Errorf("create BMH: %w", createErr)
-		}
-	} else if err != nil {
-		return fmt.Errorf("get BMH: %w", err)
-	} else {
-		// When Ironic is actively managing the host (provisioning, deprovisioning,
-		// provisioned, etc.), only update the fields MAPNI owns: BMC address,
-		// credentials, and boot MAC. Preserve spec.image, spec.userData,
-		// spec.automatedCleaningMode, and spec.online that the operator set
-		// to trigger provisioning — overwriting them would abort the deployment.
-		if existing.Status.Provisioning.State == "available" || existing.Status.Provisioning.State == "" {
-			existing.Spec = desired.Spec
-		} else {
-			existing.Spec.BMC = desired.Spec.BMC
-			existing.Spec.BootMACAddress = desired.Spec.BootMACAddress
-			existing.Spec.ExternallyProvisioned = desired.Spec.ExternallyProvisioned
-		}
-		existing.Labels = desired.Labels
-		existing.Annotations = desired.Annotations
-		if updateErr := r.Update(ctx, existing); updateErr != nil {
-			return fmt.Errorf("update BMH: %w", updateErr)
-		}
+	// Use Server-Side Apply so MAPNI only manages the fields it sets.
+	// Fields absent from desired (spec.image, spec.userData, spec.automatedCleaningMode)
+	// are owned by other field managers and are never touched by this apply.
+	desired.ManagedFields = nil
+	if applyErr := r.Patch(ctx, desired, client.Apply,
+		client.FieldOwner("mapni-controller"),
+		client.ForceOwnership,
+	); applyErr != nil {
+		return fmt.Errorf("apply BMH: %w", applyErr)
 	}
 
 	if !r.Config.ExternallyProvisioned {
