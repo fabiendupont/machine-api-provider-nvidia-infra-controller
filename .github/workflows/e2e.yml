@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows: ["Image"]
     types: [completed]
+    branches: [main]
 
 jobs:
   e2e:
